@@ -1,0 +1,6 @@
+{
+  "name": "STRIP",
+  "description": "Plateforme de streaming vidéo et messagerie temps réel connectée en direct à STRIP CMO-Streaming",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
