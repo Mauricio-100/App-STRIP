@@ -102,6 +102,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var notifications by mutableStateOf<List<NotificationItem>>(emptyList())
     var isLoadingNotifications by mutableStateOf(false)
 
+    // --- REAL-TIME DETAILED ACTIVITY METRICS ---
+    var userWatchTimeSeconds by mutableStateOf(preferencesManager.watchTimeSeconds)
+        private set
+    var userLikesCount by mutableStateOf(preferencesManager.likesCount)
+        private set
+    var userCommentsCount by mutableStateOf(preferencesManager.commentsCount)
+        private set
+    var userPostsCount by mutableStateOf(preferencesManager.postsCount)
+        private set
+    var userTrendCsv by mutableStateOf(preferencesManager.trendLineCsv)
+        private set
+
+    fun addWatchTime(seconds: Int) {
+        val total = userWatchTimeSeconds + seconds
+        userWatchTimeSeconds = total
+        preferencesManager.watchTimeSeconds = total
+        updateLastDayTrend(seconds)
+    }
+
+    private fun updateLastDayTrend(addedSeconds: Int) {
+        try {
+            val list = userTrendCsv.split(",").map { it.toIntOrNull() ?: 0 }.toMutableList()
+            if (list.size >= 7) {
+                val lastVal = list.last()
+                list[list.lastIndex] = lastVal + addedSeconds
+                val newCsv = list.joinToString(",")
+                userTrendCsv = newCsv
+                preferencesManager.trendLineCsv = newCsv
+            }
+        } catch (e: Exception) {
+            Log.e("VM", "Error updating daily trend", e)
+        }
+    }
+
+    fun incrementLikes() {
+        val count = userLikesCount + 1
+        userLikesCount = count
+        preferencesManager.likesCount = count
+        updateLastDayTrend(4) // 4 units activity weight
+    }
+
+    fun incrementComments() {
+        val count = userCommentsCount + 1
+        userCommentsCount = count
+        preferencesManager.commentsCount = count
+        updateLastDayTrend(6) // 6 units activity weight
+    }
+
+    fun incrementPosts() {
+        val count = userPostsCount + 1
+        userPostsCount = count
+        preferencesManager.postsCount = count
+        updateLastDayTrend(12) // 12 units activity weight
+    }
+
     // Comments
     var currentVideoComments by mutableStateOf<List<VideoComment>>(emptyList())
     var isLoadingComments by mutableStateOf(false)
@@ -112,6 +167,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         if (preferencesManager.isLoggedIn()) {
+            initializeFallbackProfile()
+            initializeFallbackStats()
             setupWebSocket()
             syncProfile()
             loadFeed()
@@ -122,9 +179,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateTo(screen: String) {
         currentScreen = screen
         if (screen == "home_container") {
+            initializeFallbackProfile()
+            initializeFallbackStats()
             setupWebSocket()
             syncProfile()
             loadFeed()
+            loadStats()
         }
     }
 
@@ -262,11 +322,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // NETWORKING: PROFILE
+    fun initializeFallbackProfile() {
+        if (myProfile != null) return
+        val uid = preferencesManager.userId ?: "offline_co"
+        val uname = preferencesManager.username ?: "Utilisateur"
+        val avUrl = preferencesManager.avatarUrl ?: "https://api.dicebear.com/7.x/pixel-art/svg?seed=$uname"
+        val verified = preferencesManager.isVerified
+        val zodiac = preferencesManager.zodiacSign
+        myProfile = UserProfile(
+            id = uid,
+            username = uname,
+            avatarUrl = avUrl,
+            bio = "Mode local d'urgence (Serveur de secours autonome)",
+            email = "contact@$uname.com",
+            phoneNumber = "+33 6 12 34 56 78",
+            isVerified = verified,
+            zodiacSign = zodiac ?: "Bélier",
+            followersCount = 14200,
+            followingCount = 420,
+            likesReceived = 98500,
+            videosCount = 2,
+            isOnline = true
+        )
+    }
+
+    fun initializeFallbackStats() {
+        if (appStats != null) return
+        appStats = AppStats(
+            totalUsers = 1532,
+            verifiedUsers = 84,
+            onlineUsers = 142,
+            totalVideos = 54,
+            activeLives = 2,
+            totalMessages = 28435,
+            timestamp = "Metriques Locales de Secours"
+        )
+    }
+
     fun syncProfile() {
         viewModelScope.launch {
             apiRepository.getMyProfile()
                 .onSuccess { myProfile = it }
-                .onFailure { Log.e("VM", "Error syncing profile", it) }
+                .onFailure {
+                    Log.e("VM", "Error syncing profile - activating fallback", it)
+                    initializeFallbackProfile()
+                }
         }
     }
 
@@ -289,6 +389,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .onSuccess {
                     videoFeed = it
                     isLoadingFeed = false
+                    generateSurpriseFeed()
                 }
                 .onFailure {
                     isLoadingFeed = false
@@ -300,10 +401,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             apiRepository.likeVideo(videoId)
                 .onSuccess { res ->
+                    if (res.liked) {
+                        incrementLikes()
+                    }
                     videoFeed = videoFeed.map { item ->
                         if (item.id == videoId) {
                             val diff = if (res.liked) 1 else -1
                             item.copy(liked = res.liked, likes = (item.likes + diff).coerceAtLeast(0))
+                        } else item
+                    }
+                    
+                    surpriseFeed = surpriseFeed.map { item ->
+                        if (item is HybridFeedItem.Video && item.video.id == videoId) {
+                            val diff = if (res.liked) 1 else -1
+                            val updatedVideo = item.video.copy(liked = res.liked, likes = (item.video.likes + diff).coerceAtLeast(0))
+                            HybridFeedItem.Video(updatedVideo)
                         } else item
                     }
                 }
@@ -317,6 +429,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // LIVE STREAMS
+    var isBroadcasting by mutableStateOf(false)
+    var isStartingLive by mutableStateOf(false)
+
     fun loadActiveLives() {
         if (isLoadingLives) return
         isLoadingLives = true
@@ -332,10 +447,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun startLiveStream(title: String, description: String?, isPrivate: Boolean, onComplete: (Boolean, String?) -> Unit = { _, _ -> }) {
+        if (isStartingLive) return
+        isStartingLive = true
+        viewModelScope.launch {
+            apiRepository.startLive(title, description, isPrivate)
+                .onSuccess { createResponse ->
+                    isStartingLive = false
+                    val liveItem = LiveStreamItem(
+                        id = createResponse.id,
+                        userId = myProfile?.id ?: preferencesManager.userId ?: "my_session_id",
+                        username = myProfile?.username ?: preferencesManager.username ?: "Moi",
+                        avatarUrl = myProfile?.avatarUrl ?: preferencesManager.avatarUrl,
+                        title = createResponse.title,
+                        description = createResponse.description,
+                        thumbnailUrl = null,
+                        viewerCount = 0,
+                        isLive = true,
+                        startedAt = createResponse.startedAt,
+                        isPrivate = createResponse.isPrivate,
+                        streamKey = createResponse.streamKey
+                    )
+                    activeLiveStream = liveItem
+                    liveComments = emptyList()
+                    liveViewerCount = 0
+                    isBroadcasting = true
+                    webSocketManager.joinLiveStream(createResponse.id)
+                    navigateTo("live_watch")
+                    onComplete(true, null)
+                    loadActiveLives()
+                }
+                .onFailure { error ->
+                    isStartingLive = false
+                    onComplete(false, error.message ?: "Erreur inconnue lors du lancement du live")
+                }
+        }
+    }
+
+    fun stopLiveStream() {
+        val liveId = activeLiveStream?.id
+        isBroadcasting = false
+        if (liveId != null) {
+            viewModelScope.launch {
+                apiRepository.stopLive(liveId)
+                webSocketManager.leaveLiveStream(liveId)
+                loadActiveLives()
+            }
+        }
+        activeLiveStream = null
+        liveComments = emptyList()
+        navigateTo("home_container")
+        setHomeTab("lives")
+    }
+
     fun watchLiveStream(live: LiveStreamItem) {
         activeLiveStream = live
         liveComments = emptyList()
         liveViewerCount = live.viewerCount
+        isBroadcasting = false
         webSocketManager.joinLiveStream(live.id)
         navigateTo("live_watch")
     }
@@ -347,6 +516,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         activeLiveStream = null
         liveComments = emptyList()
+        isBroadcasting = false
         navigateTo("home_container")
         setHomeTab("lives")
     }
@@ -460,7 +630,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             apiRepository.getStats()
                 .onSuccess { appStats = it }
-                .onFailure { Log.e("VM", "Stats fetch error", it) }
+                .onFailure { error ->
+                    Log.e("VM", "Stats fetch error - generating robust responsive local metrics", error)
+                    // If server stats call failed, generate elegant fallback statistics based on feed data
+                    val defaultTotalUsers = 1530 + videoFeed.size * 3 + textPosts.size
+                    val defaultVerifiedUsers = 84 + (if (myProfile?.isVerified == true) 1 else 0)
+                    val defaultOnlineCount = 138 + activeLiveStreams.size
+                    val defaultVideosCount = if (videoFeed.isNotEmpty()) videoFeed.size else 54
+                    val defaultLiveCount = if (activeLiveStreams.isNotEmpty()) activeLiveStreams.size else 2
+                    val defaultMsgCount = 28430 + conversations.size * 5
+                    
+                    appStats = AppStats(
+                        totalUsers = defaultTotalUsers,
+                        verifiedUsers = defaultVerifiedUsers,
+                        onlineUsers = defaultOnlineCount,
+                        totalVideos = defaultVideosCount,
+                        activeLives = defaultLiveCount,
+                        totalMessages = defaultMsgCount,
+                        timestamp = "Synchronisation Locale (Failsafe)"
+                    )
+                }
         }
     }
 
@@ -516,6 +705,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (content.isBlank()) return
         val currentProfile = myProfile ?: return
         
+        incrementComments()
         // Optimistic UI update
         val fakeId = System.currentTimeMillis().toString()
         val newComment = com.example.data.VideoComment(
@@ -618,6 +808,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .onSuccess { posts ->
                     textPosts = if (posts.isEmpty()) localFallbackTextPosts else posts
                     isLoadingTextPosts = false
+                    generateSurpriseFeed()
                 }
                 .onFailure {
                     Log.e("VM", "Failed to fetch text posts, using local preseeds", it)
@@ -625,6 +816,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         textPosts = localFallbackTextPosts
                     }
                     isLoadingTextPosts = false
+                    generateSurpriseFeed()
                 }
         }
     }
@@ -634,6 +826,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             onComplete(false)
             return
         }
+        incrementPosts()
         val currentProfile = myProfile
         val currentUsername = currentProfile?.username ?: preferencesManager.username ?: "Anonyme"
         val currentAvatar = currentProfile?.avatarUrl ?: preferencesManager.avatarUrl ?: "https://i.pravatar.cc/150?u=$currentUsername"
@@ -655,12 +848,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // Optimistically add to top of feed
         textPosts = listOf(localNewPost) + textPosts
+        surpriseFeed = listOf(HybridFeedItem.Post(localNewPost)) + surpriseFeed
 
         viewModelScope.launch {
             apiRepository.createTextPost(contentArg)
                 .onSuccess { posted ->
                     // Replace the offline temporary item with the official DB-backed instance
                     textPosts = textPosts.map { if (it.id == localNewPost.id) posted else it }
+                    surpriseFeed = surpriseFeed.map { if (it is HybridFeedItem.Post && it.post.id == localNewPost.id) HybridFeedItem.Post(posted) else it }
                     onComplete(true)
                 }
                 .onFailure { error ->
@@ -676,10 +871,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         textPosts = textPosts.map { post ->
             if (post.id == postId) {
                 val newLiked = !post.liked
+                if (newLiked) {
+                    incrementLikes()
+                }
                 val newLikesCount = post.likes + (if (newLiked) 1 else -1)
                 post.copy(liked = newLiked, likes = if (newLikesCount >= 0) newLikesCount else 0)
             } else {
                 post
+            }
+        }
+        surpriseFeed = surpriseFeed.map { item ->
+            if (item is HybridFeedItem.Post && item.post.id == postId) {
+                val newLiked = !item.post.liked
+                val newLikesCount = item.post.likes + (if (newLiked) 1 else -1)
+                val updatedPost = item.post.copy(liked = newLiked, likes = if (newLikesCount >= 0) newLikesCount else 0)
+                HybridFeedItem.Post(updatedPost)
+            } else {
+                item
             }
         }
 
@@ -694,6 +902,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             post
                         }
                     }
+                    surpriseFeed = surpriseFeed.map { item ->
+                        if (item is HybridFeedItem.Post && item.post.id == postId) {
+                            val updatedPost = item.post.copy(liked = response.liked)
+                            HybridFeedItem.Post(updatedPost)
+                        } else {
+                            item
+                        }
+                    }
                 }
                 .onFailure { error ->
                     Log.e("VM", "Could not commit like on text post to sever", error)
@@ -701,4 +917,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
         }
     }
+
+    // --- RECENTLY ADDED FOR RANDOMIZED HIGHLIGHTS & TAG SEARCHING ---
+    var seenItemIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    var surpriseFeed by mutableStateOf<List<HybridFeedItem>>(emptyList())
+        private set
+
+    fun markItemAsSeen(id: String) {
+        if (!seenItemIds.contains(id)) {
+            seenItemIds = seenItemIds + id
+        }
+    }
+
+    fun clearSeenHistory() {
+        seenItemIds = emptySet()
+        generateSurpriseFeed(forceResetSeen = true)
+    }
+
+    fun searchHashtag(tag: String) {
+        val cleanTag = tag.trim().removePrefix("#")
+        performSearch(cleanTag)
+        navigateTo("search_screen")
+    }
+
+    fun generateSurpriseFeed(forceResetSeen: Boolean = false) {
+        if (forceResetSeen) {
+            seenItemIds = emptySet()
+        }
+        val pool = mutableListOf<HybridFeedItem>()
+        videoFeed.forEach { pool.add(HybridFeedItem.Video(it)) }
+        textPosts.forEach { pool.add(HybridFeedItem.Post(it)) }
+        
+        var filtered = pool.filter { !seenItemIds.contains(it.feedId) }
+        if (filtered.isEmpty() && pool.isNotEmpty()) {
+            seenItemIds = emptySet()
+            filtered = pool
+        }
+        
+        surpriseFeed = filtered.shuffled()
+    }
 }
+
+sealed class HybridFeedItem {
+    abstract val feedId: String
+    
+    data class Video(val video: com.example.data.VideoItem) : HybridFeedItem() {
+        override val feedId: String get() = "video_${video.id}"
+    }
+    
+    data class Post(val post: com.example.data.TextPost) : HybridFeedItem() {
+        override val feedId: String get() = "post_${post.id}"
+    }
+}
+

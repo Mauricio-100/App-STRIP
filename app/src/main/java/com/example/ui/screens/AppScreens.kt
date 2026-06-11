@@ -50,6 +50,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isUnspecified
+import androidx.compose.foundation.text.ClickableText
+
 
 // DESIGN THEME COLORS
 val NeonPink = Color(0xFFFF2D55)
@@ -864,7 +866,8 @@ fun TikTokShortsPageItem(
     isActive: Boolean,
     onLike: () -> Unit,
     onProfileClick: () -> Unit,
-    onCommentClick: () -> Unit
+    onCommentClick: () -> Unit,
+    onWatchTimeIncrement: (Int) -> Unit = {}
 ) {
     var isPlaying by remember(isActive) { mutableStateOf(isActive) }
 
@@ -885,6 +888,12 @@ fun TikTokShortsPageItem(
 
             LaunchedEffect(isPlaying, isActive) {
                 exoPlayer.playWhenReady = isPlaying && isActive
+                if (isPlaying && isActive) {
+                    while (true) {
+                        kotlinx.coroutines.delay(1000L)
+                        onWatchTimeIncrement(1)
+                    }
+                }
             }
 
             DisposableEffect(Unit) {
@@ -1102,7 +1111,8 @@ fun TikTokShortsPager(
                 isActive = isPageActive,
                 onLike = { viewModel.likeVideo(video.id) },
                 onProfileClick = { viewModel.viewOtherUserProfile(video.userId) },
-                onCommentClick = { onCommentClick(video.id) }
+                onCommentClick = { onCommentClick(video.id) },
+                onWatchTimeIncrement = { viewModel.addWatchTime(it) }
             )
         }
     }
@@ -1115,7 +1125,8 @@ fun MarkdownText(
     color: Color = Color.Unspecified,
     fontSize: TextUnit = TextUnit.Unspecified,
     fontWeight: FontWeight? = null,
-    maxLines: Int = Int.MAX_VALUE
+    maxLines: Int = Int.MAX_VALUE,
+    onTagClick: ((String) -> Unit)? = null
 ) {
     val annotatedString = remember(text) {
         buildAnnotatedString {
@@ -1208,9 +1219,11 @@ fun MarkdownText(
                                 }
                                 if (endIdx > pos + 1) {
                                     val tag = stylizedLine.substring(pos, endIdx)
+                                    pushStringAnnotation(tag = "HASHTAG", annotation = tag)
                                     withStyle(style = SpanStyle(color = NeonPink, fontWeight = FontWeight.SemiBold)) {
                                         append(tag)
                                     }
+                                    pop()
                                     pos = endIdx
                                 } else {
                                     append("#")
@@ -1235,22 +1248,43 @@ fun MarkdownText(
     val finalColor = if (color == Color.Unspecified) TextPrimary else color
     val finalFontSize = if (fontSize == TextUnit.Unspecified) 14.sp else fontSize
     
-    Text(
-        text = annotatedString,
-        modifier = modifier,
-        color = finalColor,
-        fontSize = finalFontSize,
-        fontWeight = fontWeight,
-        maxLines = maxLines,
-        overflow = TextOverflow.Ellipsis
-    )
+    if (onTagClick != null) {
+        ClickableText(
+            text = annotatedString,
+            modifier = modifier,
+            style = LocalTextStyle.current.copy(
+                color = finalColor,
+                fontSize = finalFontSize,
+                fontWeight = fontWeight ?: FontWeight.Normal
+            ),
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+            onClick = { offset ->
+                annotatedString.getStringAnnotations(tag = "HASHTAG", start = offset, end = offset)
+                    .firstOrNull()?.let { annotation ->
+                        onTagClick(annotation.item)
+                    }
+            }
+        )
+    } else {
+        Text(
+            text = annotatedString,
+            modifier = modifier,
+            color = finalColor,
+            fontSize = finalFontSize,
+            fontWeight = fontWeight,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable
 fun TextPostCard(
     post: TextPost,
     onLike: () -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onTagClick: ((String) -> Unit)? = null
 ) {
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -1326,8 +1360,10 @@ fun TextPostCard(
                 text = post.content,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
                 color = TextPrimary,
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                onTagClick = onTagClick
             )
+
 
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 1.dp)
@@ -1705,18 +1741,26 @@ fun FeedTabScreen(viewModel: MainViewModel) {
                                 TextPostCard(
                                     post = post,
                                     onLike = { viewModel.likeTextPost(post.id) },
-                                    onProfileClick = { viewModel.viewOtherUserProfile(post.userId) }
+                                    onProfileClick = { viewModel.viewOtherUserProfile(post.userId) },
+                                    onTagClick = { tag -> viewModel.searchHashtag(tag) }
                                 )
                             }
                         }
                     }
                 } else {
                     // Standard visual feed for "foryou" subtab
-                    if (viewModel.isLoadingFeed && items.isEmpty()) {
+                    val hybridItems = viewModel.surpriseFeed
+                    LaunchedEffect(viewModel.videoFeed, viewModel.textPosts) {
+                        if (hybridItems.isEmpty()) {
+                            viewModel.generateSurpriseFeed()
+                        }
+                    }
+
+                    if (viewModel.isLoadingFeed && hybridItems.isEmpty()) {
                         Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(color = NeonPink)
                         }
-                    } else if (items.isEmpty()) {
+                    } else if (hybridItems.isEmpty() && items.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -1727,19 +1771,14 @@ fun FeedTabScreen(viewModel: MainViewModel) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(Icons.Default.MovieFilter, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(60.dp))
                                 Spacer(modifier = Modifier.height(12.dp))
-                                Text("Aucune vidéo trouvée sur le serveur.", color = TextSecondary, fontSize = 16.sp, textAlign = TextAlign.Center)
+                                Text("Aucun contenu trouvé.", color = TextSecondary, fontSize = 16.sp, textAlign = TextAlign.Center)
                                 Spacer(modifier = Modifier.height(20.dp))
-                                Button(onClick = { viewModel.loadFeed() }, colors = ButtonDefaults.buttonColors(containerColor = NeonPink)) {
+                                Button(onClick = { viewModel.loadFeed(); viewModel.loadTextPosts() }, colors = ButtonDefaults.buttonColors(containerColor = NeonPink)) {
                                     Text("Recharger")
                                 }
                             }
                         }
                     } else {
-                        val displayItems = when (selectedSubTab) {
-                            "foryou" -> items.shuffled()
-                            else -> items
-                        }
-
                         LazyColumn(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1752,17 +1791,82 @@ fun FeedTabScreen(viewModel: MainViewModel) {
                                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
                             }
 
-                            items(displayItems) { video ->
-                                VideoFeedCard(
-                                    video = video,
-                                    onLike = { viewModel.likeVideo(video.id) },
-                                    onProfileClick = { viewModel.viewOtherUserProfile(video.userId) },
-                                    onView = { viewModel.incrementVideoView(video.id) },
-                                    onCommentClick = {
-                                        selectedVideoForComments = video.id
-                                        viewModel.loadVideoComments(video.id)
+                            // Info Header for randomized/history state description
+                            item {
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = DarkSurface.copy(alpha = 0.6f)),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Casino,
+                                                contentDescription = null,
+                                                tint = NeonCyan,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Mode Surprise Aléatoire (${viewModel.seenItemIds.size} vus)",
+                                                color = TextPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        if (viewModel.seenItemIds.isNotEmpty()) {
+                                            Text(
+                                                text = "Réinitialiser 🔄",
+                                                color = NeonPink,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.clickable { viewModel.clearSeenHistory() }
+                                            )
+                                        }
                                     }
-                                )
+                                }
+                            }
+
+                            items(hybridItems) { item ->
+                                when (item) {
+                                    is com.example.ui.viewmodels.HybridFeedItem.Video -> {
+                                        val video = item.video
+                                        LaunchedEffect(video.id) {
+                                            viewModel.markItemAsSeen(item.feedId)
+                                        }
+                                        VideoFeedCard(
+                                            video = video,
+                                            onLike = { viewModel.likeVideo(video.id) },
+                                            onProfileClick = { viewModel.viewOtherUserProfile(video.userId) },
+                                            onView = { viewModel.incrementVideoView(video.id) },
+                                            onCommentClick = {
+                                                selectedVideoForComments = video.id
+                                                viewModel.loadVideoComments(video.id)
+                                            },
+                                            onWatchTimeIncrement = { viewModel.addWatchTime(it) }
+                                        )
+                                    }
+                                    is com.example.ui.viewmodels.HybridFeedItem.Post -> {
+                                        val post = item.post
+                                        LaunchedEffect(post.id) {
+                                            viewModel.markItemAsSeen(item.feedId)
+                                        }
+                                        TextPostCard(
+                                            post = post,
+                                            onLike = { viewModel.likeTextPost(post.id) },
+                                            onProfileClick = { viewModel.viewOtherUserProfile(post.userId) },
+                                            onTagClick = { tag -> viewModel.searchHashtag(tag) }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1868,7 +1972,7 @@ fun CommentsSheetContent(viewModel: MainViewModel, videoId: String) {
 }
 
 @Composable
-fun VideoFeedCard(video: VideoItem, onLike: () -> Unit, onProfileClick: () -> Unit, onView: () -> Unit, onCommentClick: () -> Unit) {
+fun VideoFeedCard(video: VideoItem, onLike: () -> Unit, onProfileClick: () -> Unit, onView: () -> Unit, onCommentClick: () -> Unit, onWatchTimeIncrement: (Int) -> Unit = {}) {
     // Increment view once on presentation simulates video playback
     LaunchedEffect(video.id) {
         onView()
@@ -1903,6 +2007,12 @@ fun VideoFeedCard(video: VideoItem, onLike: () -> Unit, onProfileClick: () -> Un
                     }
                     LaunchedEffect(isPlaying) {
                         exoPlayer.playWhenReady = isPlaying
+                        if (isPlaying) {
+                            while (true) {
+                                kotlinx.coroutines.delay(1000L)
+                                onWatchTimeIncrement(1)
+                            }
+                        }
                     }
                     DisposableEffect(Unit) {
                         onDispose {
@@ -2079,55 +2189,217 @@ fun VideoFeedCard(video: VideoItem, onLike: () -> Unit, onProfileClick: () -> Un
 @Composable
 fun LivesTabScreen(viewModel: MainViewModel) {
     val items = viewModel.activeLiveStreams
+    var showStartLiveDialog by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement. someRowMatchingSpaceBetween() ?: Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "LIVES EN COURS",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextPrimary
-            )
-
-            IconButton(onClick = { viewModel.loadActiveLives() }) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh Lives", tint = NeonCyan)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (viewModel.isLoadingLives && items.isEmpty()) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = NeonCyan)
-            }
-        } else if (items.isEmpty()) {
-            Box(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentAlignment = Alignment.Center
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement. someRowMatchingSpaceBetween() ?: Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.TvOff, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(60.dp))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Aucun live stream actif programmé.", color = TextSecondary, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { viewModel.loadActiveLives() }, colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)) {
-                        Text("Actualiser", color = DeepMidnight, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "LIVES EN COURS",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+
+                IconButton(onClick = { viewModel.loadActiveLives() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Lives", tint = NeonCyan)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (viewModel.isLoadingLives && items.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = NeonCyan)
+                }
+            } else if (items.isEmpty()) {
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.TvOff, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(60.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Aucun live stream actif programmé.", color = TextSecondary, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { viewModel.loadActiveLives() }, colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)) {
+                            Text("Actualiser", color = DeepMidnight, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(items) { stream ->
+                        LiveStreamCard(stream = stream, onWatch = { viewModel.watchLiveStream(stream) })
                     }
                 }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+        }
+
+        // FLOATING ACTION BUTTON TO GO LIVE
+        FloatingActionButton(
+            onClick = { showStartLiveDialog = true },
+            containerColor = NeonCyan,
+            contentColor = DeepMidnight,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+                .testTag("go_live_fab"),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(items) { stream ->
-                    LiveStreamCard(stream = stream, onWatch = { viewModel.watchLiveStream(stream) })
-                }
+                Icon(Icons.Default.Videocam, contentDescription = "Lancer un direct", modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Lancer un Live",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
+        }
+
+        // GO LIVE CONFIGURATION DIALOG
+        if (showStartLiveDialog) {
+            var liveTitle by remember { mutableStateOf("") }
+            var liveDescription by remember { mutableStateOf("") }
+            var isPrivateLive by remember { mutableStateOf(false) }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
+
+            AlertDialog(
+                onDismissRequest = { 
+                    if (!viewModel.isStartingLive) {
+                        showStartLiveDialog = false 
+                    }
+                },
+                containerColor = DarkSurface,
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Podcasts, contentDescription = null, tint = NeonPink, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Créer votre Live Stream",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 18.sp
+                        )
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Configurez les informations de votre transmission pour que vos abonnés puissent vous rejoindre.",
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+
+                        OutlinedTextField(
+                            value = liveTitle,
+                            onValueChange = { 
+                                liveTitle = it
+                                errorMessage = null
+                            },
+                            label = { Text("Titre du Live", color = TextSecondary) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NeonCyan,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = liveDescription,
+                            onValueChange = { liveDescription = it },
+                            label = { Text("Description (Optionnel)", color = TextSecondary) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NeonCyan,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            ),
+                            maxLines = 3,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { isPrivateLive = !isPrivateLive }
+                        ) {
+                            Checkbox(
+                                checked = isPrivateLive,
+                                onCheckedChange = { isPrivateLive = it },
+                                colors = CheckboxDefaults.colors(checkedColor = NeonCyan)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Column {
+                                Text("Live Stream Privé", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Seuls les utilisateurs avec le lien ou l'ID direct peuvent regarder.", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+
+                        errorMessage?.let { errorMsg ->
+                            Text(
+                                text = errorMsg,
+                                color = Color.Red,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (liveTitle.isBlank()) {
+                                errorMessage = "Veuillez spécifier un titre pour votre live !"
+                                return@Button
+                            }
+                            viewModel.startLiveStream(
+                                title = liveTitle,
+                                description = liveDescription.ifBlank { null },
+                                isPrivate = isPrivateLive,
+                                onComplete = { success, error ->
+                                    if (success) {
+                                        showStartLiveDialog = false
+                                    } else {
+                                        errorMessage = error ?: "Une erreur est survenue lors du démarrage"
+                                    }
+                                }
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                        enabled = !viewModel.isStartingLive
+                    ) {
+                        if (viewModel.isStartingLive) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = DeepMidnight, strokeWidth = 2.dp)
+                        } else {
+                            Text("Démarrer le Live", color = DeepMidnight, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { showStartLiveDialog = false },
+                        enabled = !viewModel.isStartingLive
+                    ) {
+                        Text("Annuler", color = TextSecondary)
+                    }
+                }
+            )
         }
     }
 }
@@ -2224,6 +2496,13 @@ fun LiveStreamWatchScreen(viewModel: MainViewModel) {
     val live = viewModel.activeLiveStream ?: return
     var commentText by remember { mutableStateOf("") }
 
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000L)
+            viewModel.addWatchTime(1)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2240,7 +2519,13 @@ fun LiveStreamWatchScreen(viewModel: MainViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                IconButton(onClick = { viewModel.leaveLiveStream() }) {
+                IconButton(onClick = {
+                    if (viewModel.isBroadcasting) {
+                        viewModel.stopLiveStream()
+                    } else {
+                        viewModel.leaveLiveStream()
+                    }
+                }) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Leave stream", tint = TextPrimary)
                 }
 
@@ -2262,7 +2547,11 @@ fun LiveStreamWatchScreen(viewModel: MainViewModel) {
 
                 Column {
                     Text(live.title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Diffuseur: @${live.username}", color = NeonCyan, fontSize = 11.sp)
+                    Text(
+                        text = if (viewModel.isBroadcasting) "Votre Studio Live" else "Diffuseur: @${live.username}",
+                        color = NeonCyan,
+                        fontSize = 11.sp
+                    )
                 }
             }
 
@@ -2301,7 +2590,7 @@ fun LiveStreamWatchScreen(viewModel: MainViewModel) {
                         // Dynamic glowing grids background
                         drawRect(
                             brush = Brush.radialGradient(
-                                colors = listOf(NeonPink.copy(alpha = 0.25f), Color.Transparent),
+                                colors = listOf(if (viewModel.isBroadcasting) NeonPink.copy(alpha = 0.35f) else NeonPink.copy(alpha = 0.25f), Color.Transparent),
                                 center = Offset(size.width / 2, size.height / 3),
                                 radius = size.minDimension / 1.5f
                             )
@@ -2309,11 +2598,87 @@ fun LiveStreamWatchScreen(viewModel: MainViewModel) {
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.LiveTv, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(80.dp))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("FLUX VIDÉO EN COURS", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text("Retransmission temps réel STRIP", color = TextSecondary, fontSize = 12.sp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (viewModel.isBroadcasting) {
+                        var blinkState by remember { mutableStateOf(true) }
+                        LaunchedEffect(Unit) {
+                            while (true) {
+                                kotlinx.coroutines.delay(800L)
+                                blinkState = !blinkState
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .background(Color.Red.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                                .border(1.dp, if (blinkState) Color.Red else Color.Transparent, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (blinkState) Color.Red else Color.Gray)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "VOUS ÊTES EN DIRECT",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Icon(Icons.Default.Videocam, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(64.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(live.title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        
+                        live.description?.let {
+                            Text(it, color = TextSecondary, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // RTMP & Key Panel for OBS Setup
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = DarkSurface.copy(alpha = 0.85f)),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("SERVEUR DE STREAM (OBS / PRISM)", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("URL RTMP: rtmp://stream.strip-me.com/live", color = TextSecondary, fontSize = 10.sp, maxLines = 1)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Clé de Flux: ${live.streamKey ?: "Spécifiée par le serveur"}", color = GoldAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Button(
+                            onClick = { viewModel.stopLiveStream() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier.testTag("stop_live_button")
+                        ) {
+                            Icon(Icons.Default.Stop, contentDescription = null, tint = Color.White)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Arrêter la diffusion", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Icon(Icons.Default.LiveTv, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(80.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("FLUX VIDÉO EN COURS", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Retransmission temps réel STRIP", color = TextSecondary, fontSize = 12.sp)
+                    }
                 }
             }
 
@@ -2707,6 +3072,20 @@ fun ChatDetailScreen(viewModel: MainViewModel) {
 @Composable
 fun StatsTabScreen(viewModel: MainViewModel) {
     val stats = viewModel.appStats
+    val profile = viewModel.myProfile
+    val isConnected by viewModel.isWebSocketConnected.collectAsState()
+
+    LaunchedEffect(Unit) {
+        if (viewModel.appStats == null) {
+            viewModel.initializeFallbackStats()
+        }
+        viewModel.loadStats()
+        if (viewModel.myProfile == null) {
+            viewModel.initializeFallbackProfile()
+        }
+        viewModel.syncProfile()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2714,59 +3093,250 @@ fun StatsTabScreen(viewModel: MainViewModel) {
             .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "DIAGNOSTICS SERVEUR",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = TextPrimary,
-            modifier = Modifier.align(Alignment.Start)
-        )
-        Text(
-            text = "Mesures de CMO-Streaming en temps réel",
-            fontSize = 12.sp,
-            color = TextSecondary,
-            modifier = Modifier.align(Alignment.Start).padding(bottom = 20.dp)
-        )
+        // Upper Title Header
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "DIAGNOSTICS GLOBAL",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextPrimary
+                )
+                Text(
+                    text = "Métriques en direct de CMO-Streaming",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+            }
+            
+            // Connection Status Dot Indicator
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .background(if (isConnected) Color.Green.copy(alpha = 0.12f) else NeonPink.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                    .border(1.dp, if (isConnected) Color.Green else NeonPink, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (isConnected) Color.Green else NeonPink)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (isConnected) "Live" else "Offline",
+                    color = if (isConnected) Color.Green else NeonPink,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (stats == null) {
             Box(modifier = Modifier.height(200.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = NeonCyan)
             }
         } else {
+            // Content Distribution Visual Segment (Proportion metrics)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "RÉPARTITION DU CONTENU PLATFORME",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = NeonCyan,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    
+                    val videosCount = stats.totalVideos.coerceAtLeast(1)
+                    val postsCount = if (viewModel.textPosts.isNotEmpty()) viewModel.textPosts.size else 42
+                    val livesCount = stats.activeLives.coerceAtLeast(1)
+                    val totalSum = (videosCount + postsCount + livesCount).toFloat()
+                    
+                    val pctVideos = (videosCount / totalSum)
+                    val pctPosts = (postsCount / totalSum)
+                    val pctLives = (livesCount / totalSum)
+                    
+                    // Multicolor multi-segment progress bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.DarkGray)
+                    ) {
+                        Box(modifier = Modifier.weight(pctVideos.coerceAtLeast(0.05f)).fillMaxHeight().background(NeonPink))
+                        Box(modifier = Modifier.weight(pctLives.coerceAtLeast(0.05f)).fillMaxHeight().background(NeonCyan))
+                        Box(modifier = Modifier.weight(pctPosts.coerceAtLeast(0.05f)).fillMaxHeight().background(GoldAccent))
+                    }
+                    
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    // Legend
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        LegendItem(title = "Vidéos ($videosCount)", color = NeonPink, percent = "${(pctVideos*100).toInt()}%")
+                        LegendItem(title = "Lives ($livesCount)", color = NeonCyan, percent = "${(pctLives*100).toInt()}%")
+                        LegendItem(title = "Posts ($postsCount)", color = GoldAccent, percent = "${(pctPosts*100).toInt()}%")
+                    }
+                }
+            }
+
             // Big diagnostics dashboard cards
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard(title = "Utilisateurs", value = stats.totalUsers.toString(), icon = Icons.Default.People, tint = NeonPink, modifier = Modifier.weight(1f))
-                StatCard(title = "En Ligne (Live)", value = stats.onlineUsers.toString(), icon = Icons.Default.Wifi, tint = Color.Green, modifier = Modifier.weight(1f))
+                StatCard(title = "Membres Unis", value = stats.totalUsers.toString(), icon = Icons.Default.People, tint = NeonPink, modifier = Modifier.weight(1f))
+                StatCard(title = "Visiteurs Actifs", value = stats.onlineUsers.toString(), icon = Icons.Default.Wifi, tint = Color.Green, modifier = Modifier.weight(1f))
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                StatCard(title = "Vidéos", value = stats.totalVideos.toString(), icon = Icons.Default.Movie, tint = NeonCyan, modifier = Modifier.weight(1f))
-                StatCard(title = "Lives Actifs", value = stats.activeLives.toString(), icon = Icons.Default.LiveTv, tint = GoldAccent, modifier = Modifier.weight(1f))
+                StatCard(title = "Vidéos Hébergées", value = stats.totalVideos.toString(), icon = Icons.Default.Movie, tint = NeonCyan, modifier = Modifier.weight(1f))
+                StatCard(title = "Diffusions Lives", value = stats.activeLives.toString(), icon = Icons.Default.LiveTv, tint = GoldAccent, modifier = Modifier.weight(1f))
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            StatCard(
-                title = "Total Messages Transmis",
-                value = stats.totalMessages.toString(),
-                icon = Icons.Default.Message,
-                tint = NeonPink,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatCard(title = "Comptes Certifiés", value = stats.verifiedUsers.toString(), icon = Icons.Default.Verified, tint = GoldAccent, modifier = Modifier.weight(1f))
+                StatCard(title = "Messages Envoyés", value = stats.totalMessages.toString(), icon = Icons.Default.Message, tint = NeonPink, modifier = Modifier.weight(1f))
+            }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // Vos statistiques personnelles
+            if (profile != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.15f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = GoldAccent, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "VOS STATISTIQUES PERSONNELLES",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldAccent
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Abonnés", color = TextSecondary, fontSize = 11.sp)
+                                Text("${profile.followersCount}", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("Abonnements", color = TextSecondary, fontSize = 11.sp)
+                                Text("${profile.followingCount}", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("Likes reçus", color = TextSecondary, fontSize = 11.sp)
+                                Text("${profile.likesReceived}", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Column {
+                                Text("Score d'activité", color = TextSecondary, fontSize = 11.sp)
+                                val baseScore = (profile.followersCount * 1.5 + profile.likesReceived + viewModel.userWatchTimeSeconds / 10).toInt()
+                                Text("$baseScore pts", color = NeonCyan, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Divider(color = Color.White.copy(alpha = 0.05f))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Real-time aggregation figures
+                        Text("MÉTRIQUES DE VISIONNAGE ET INTERACTIONS", fontSize = 10.sp, color = NeonPink, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val watchSec = viewModel.userWatchTimeSeconds
+                        val hrs = watchSec / 3600
+                        val mins = (watchSec % 3600) / 60
+                        val secs = watchSec % 60
+                        val watchFormatted = if (hrs > 0) "${hrs}h ${mins}m ${secs}s" else if (mins > 0) "${mins}m ${secs}s" else "${secs}s"
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("Temps Lecture", color = TextSecondary, fontSize = 9.sp)
+                                    Text(watchFormatted, color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("Likes Donnés", color = TextSecondary, fontSize = 9.sp)
+                                    Text("${viewModel.userLikesCount}", color = NeonPink, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("Comms Rédigés", color = TextSecondary, fontSize = 9.sp)
+                                    Text("${viewModel.userCommentsCount}", color = GoldAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                InteractiveTrendChart(trendCsv = viewModel.userTrendCsv, accentColor = GoldAccent)
+                Spacer(modifier = Modifier.height(8.dp))
+                InteractiveDistributionDonutChart(
+                    watchSeconds = viewModel.userWatchTimeSeconds,
+                    likes = viewModel.userLikesCount,
+                    comments = viewModel.userCommentsCount,
+                    posts = viewModel.userPostsCount
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.03f))
             ) {
-                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.CloudQueue, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("API Host: hoosthubs-g.onrender.com", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("Synchronisé le: ${stats.timestamp}", color = TextSecondary, fontSize = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+                Column(modifier = Modifier.fillMaxWidth().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CloudQueue, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("API Host: hoosthubs-g.onrender.com", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text("Protocole: WebSocket SSL Chiffré AES-256", color = TextSecondary, fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                    Text("Mis à jour le: ${stats.timestamp}", color = TextSecondary, fontSize = 9.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
@@ -2774,11 +3344,28 @@ fun StatsTabScreen(viewModel: MainViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
-            onClick = { viewModel.loadStats() },
+            onClick = {
+                viewModel.loadStats()
+                viewModel.syncProfile()
+            },
             colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
             modifier = Modifier.fillMaxWidth().height(48.dp)
         ) {
-            Text("Rafraîchir les métriques", color = DeepMidnight, fontWeight = FontWeight.Bold)
+            Icon(Icons.Default.Refresh, contentDescription = null, tint = DeepMidnight, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Rafraîchir les métriques à chaud", color = DeepMidnight, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun LegendItem(title: String, color: Color, percent: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
+        Spacer(modifier = Modifier.width(6.dp))
+        Column {
+            Text(title, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Text(percent, color = TextSecondary, fontSize = 9.sp)
         }
     }
 }
@@ -2788,13 +3375,314 @@ fun StatCard(title: String, value: String, icon: androidx.compose.ui.graphics.ve
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
         shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
         modifier = modifier
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.height(10.dp))
-            Text(text = value, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Text(text = title, fontSize = 11.sp, color = TextSecondary)
+            Text(text = value, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = TextPrimary)
+            Text(text = title, fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+fun InteractiveTrendChart(trendCsv: String, accentColor: Color) {
+    val points = remember(trendCsv) {
+        trendCsv.split(",").map { it.toFloatOrNull() ?: 0f }
+    }
+    val daysLabels = listOf("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim")
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "TENDANCE D'ACTIVITÉ (POIDS DE L'ENGAGEMENT)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor
+                )
+                Text(
+                    text = "7 Derniers Jours",
+                    fontSize = 10.sp,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            if (points.isEmpty()) {
+                Box(modifier = Modifier.height(110.dp), contentAlignment = Alignment.Center) {
+                    Text("Aucune donnée", color = TextSecondary)
+                }
+            } else {
+                val maxPoint = (points.maxOrNull() ?: 1f).coerceAtLeast(1f)
+
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(110.dp)
+                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    val spacing = width / (points.size - 1).coerceAtLeast(1)
+
+                    // Background layout grids
+                    val lines = 3
+                    for (i in 0..lines) {
+                        val y = height * i / lines
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.04f),
+                            start = Offset(0f, y),
+                            end = Offset(width, y),
+                            strokeWidth = 1f
+                        )
+                    }
+
+                    // Build line plot
+                    val path = androidx.compose.ui.graphics.Path()
+                    val connectionPoints = mutableListOf<Offset>()
+
+                    points.forEachIndexed { i, value ->
+                        val x = i * spacing
+                        val ratio = if (maxPoint > 0) (value / maxPoint) else 0f
+                        val y = height - (ratio * height)
+                        val pt = Offset(x, y)
+                        connectionPoints.add(pt)
+                        if (i == 0) {
+                            path.moveTo(x, y)
+                        } else {
+                            path.lineTo(x, y)
+                        }
+                    }
+
+                    // Bottom filling gradient
+                    val fillPath = androidx.compose.ui.graphics.Path().apply {
+                        addPath(path)
+                        lineTo(width, height)
+                        lineTo(0f, height)
+                        close()
+                    }
+
+                    drawPath(
+                        path = fillPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(accentColor.copy(alpha = 0.12f), Color.Transparent),
+                            startY = 0f,
+                            endY = height
+                        )
+                    )
+
+                    // Plot boundary stroke
+                    drawPath(
+                        path = path,
+                        color = accentColor,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 2.5f.dp.toPx(),
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    )
+
+                    // Floating marker halos
+                    connectionPoints.forEachIndexed { i, pt ->
+                        drawCircle(
+                            color = accentColor.copy(alpha = 0.2f),
+                            radius = 6.dp.toPx(),
+                            center = pt
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.5f.dp.toPx(),
+                            center = pt
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Days Labels & Weights
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    daysLabels.forEachIndexed { i, text ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text, color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            val wt = points.getOrNull(i)?.toInt() ?: 0
+                            Text("$wt", color = TextPrimary, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InteractiveDistributionDonutChart(
+    watchSeconds: Int,
+    likes: Int,
+    comments: Int,
+    posts: Int
+) {
+    val totalSecondsToMinutes = (watchSeconds / 60).coerceAtLeast(if (watchSeconds > 0) 1 else 0)
+    val sum = (totalSecondsToMinutes + likes + comments + posts).toFloat()
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "RÉPARTITION DE VOS ENGAGEMENTS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = NeonCyan,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            if (sum == 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(90.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Aucune interaction d'activité pour l'instant.\nVisionnez des vidéos et aimez des posts pour voir vos statistiques !",
+                        color = TextSecondary,
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 16.sp
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val pWatch = totalSecondsToMinutes / sum
+                    val pLikes = likes / sum
+                    val pComments = comments / sum
+                    val pPosts = posts / sum
+
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val strokeWidth = 8.dp.toPx()
+                            val sizeMin = size.minDimension
+                            val diameter = sizeMin - strokeWidth
+                            var startAngle = -90f
+
+                            // Watch Minutes component
+                            val sweepWatch = pWatch * 360f
+                            if (sweepWatch > 0f) {
+                                drawArc(
+                                    color = NeonCyan,
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepWatch,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
+                                    topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
+                                )
+                                startAngle += sweepWatch
+                            }
+
+                            // Likes component
+                            val sweepLikes = pLikes * 360f
+                            if (sweepLikes > 0f) {
+                                drawArc(
+                                    color = NeonPink,
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepLikes,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
+                                    topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
+                                )
+                                startAngle += sweepLikes
+                            }
+
+                            // Comments component
+                            val sweepComments = pComments * 360f
+                            if (sweepComments > 0f) {
+                                drawArc(
+                                    color = GoldAccent,
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepComments,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
+                                    topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
+                                )
+                                startAngle += sweepComments
+                            }
+
+                            // Posts component
+                            val sweepPosts = pPosts * 360f
+                            if (sweepPosts > 0f) {
+                                drawArc(
+                                    color = Color.Green,
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepPosts,
+                                    useCenter = false,
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(strokeWidth, cap = androidx.compose.ui.graphics.StrokeCap.Round),
+                                    size = androidx.compose.ui.geometry.Size(diameter, diameter),
+                                    topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
+                                )
+                            }
+                        }
+
+                        // Centered core metrics count
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "${totalSecondsToMinutes + likes + comments + posts}",
+                                color = TextPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = "ACTIONS",
+                                color = TextSecondary,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    // Colored legend descriptions list
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        LegendItem(title = "Lecture : $totalSecondsToMinutes min", color = NeonCyan, percent = "${(pWatch * 100).toInt()}%")
+                        LegendItem(title = "J'aime : $likes", color = NeonPink, percent = "${(pLikes * 100).toInt()}%")
+                        LegendItem(title = "Comms : $comments", color = GoldAccent, percent = "${(pComments * 100).toInt()}%")
+                        LegendItem(title = "Posts : $posts", color = Color.Green, percent = "${(pPosts * 100).toInt()}%")
+                    }
+                }
+            }
         }
     }
 }
@@ -2804,6 +3692,13 @@ fun StatCard(title: String, value: String, icon: androidx.compose.ui.graphics.ve
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileTabScreen(viewModel: MainViewModel) {
+    LaunchedEffect(Unit) {
+        if (viewModel.myProfile == null) {
+            viewModel.initializeFallbackProfile()
+        }
+        viewModel.syncProfile()
+    }
+
     val profile = viewModel.myProfile
     var showEditDialog by remember { mutableStateOf(false) }
 
@@ -2978,22 +3873,66 @@ fun ProfileTabScreen(viewModel: MainViewModel) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            Text("Mes dernières vidéos", color = TextPrimary, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(modifier = Modifier.weight(1f).height(120.dp).background(DarkSurface, RoundedCornerShape(8.dp)).border(1.dp, NeonPink, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = NeonPink, modifier = Modifier.size(32.dp))
-                }
-                Box(modifier = Modifier.weight(1f).height(120.dp).background(DarkSurface, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(32.dp))
-                }
-                Box(modifier = Modifier.weight(1f).height(120.dp).background(DarkSurface, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(32.dp))
+            // PERSONAL DASHBOARD METRICS VIEW
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, NeonCyan.copy(alpha = 0.15f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Dashboard, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "TABLEAU DE BORD D'ACTIVITÉ",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonCyan
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    val watchSec = viewModel.userWatchTimeSeconds
+                    val hrs = watchSec / 3600
+                    val mins = (watchSec % 3600) / 60
+                    val secs = watchSec % 60
+                    val watchFormatted = if (hrs > 0) "${hrs}h ${mins}m ${secs}s" else if (mins > 0) "${mins}m ${secs}s" else "${secs}s"
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Lectures cumulées", color = TextSecondary, fontSize = 10.sp)
+                            Text(watchFormatted, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column {
+                            Text("J'aime donnés", color = TextSecondary, fontSize = 10.sp)
+                            Text("${viewModel.userLikesCount}", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column {
+                            Text("Commentaires rédigés", color = TextSecondary, fontSize = 10.sp)
+                            Text("${viewModel.userCommentsCount}", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
+
+            Spacer(modifier = Modifier.height(8.dp))
+            InteractiveTrendChart(trendCsv = viewModel.userTrendCsv, accentColor = NeonPink)
+            Spacer(modifier = Modifier.height(8.dp))
+            InteractiveDistributionDonutChart(
+                watchSeconds = viewModel.userWatchTimeSeconds,
+                likes = viewModel.userLikesCount,
+                comments = viewModel.userCommentsCount,
+                posts = viewModel.userPostsCount
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Logout action Button
             Button(
@@ -3143,7 +4082,11 @@ fun MiniStat(title: String, value: Int) {
 // ──── SEARCH SCREEN ─────────────────────────────────────────────────────────
 @Composable
 fun SearchScreen(viewModel: MainViewModel) {
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(viewModel.searchQuery) }
+    
+    LaunchedEffect(viewModel.searchQuery) {
+        query = viewModel.searchQuery
+    }
     
     Column(modifier = Modifier.fillMaxSize().background(DeepMidnight).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3196,6 +4139,28 @@ fun SearchScreen(viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(video.description, color = TextPrimary, modifier = Modifier.padding(12.dp))
+                    }
+                }
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Publications / Posts", color = NeonCyan, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 8.dp))
+                }
+                
+                val matchedPosts = if (query.isBlank()) emptyList() else viewModel.textPosts.filter {
+                    it.content.contains(query, ignoreCase = true) || it.username.contains(query, ignoreCase = true)
+                }
+                if (matchedPosts.isEmpty()) {
+                    item {
+                        Text("Aucune publication trouvée matching '${query}'", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
+                    }
+                } else {
+                    items(matchedPosts) { post ->
+                        TextPostCard(
+                            post = post,
+                            onLike = { viewModel.likeTextPost(post.id) },
+                            onProfileClick = { viewModel.viewOtherUserProfile(post.userId) },
+                            onTagClick = { tag -> viewModel.searchHashtag(tag) }
+                        )
                     }
                 }
             }

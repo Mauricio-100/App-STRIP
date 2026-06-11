@@ -13,7 +13,33 @@ class PreferencesManager(context: Context) {
         private const val KEY_AVATAR_URL = "avatar_url"
         private const val KEY_IS_VERIFIED = "is_verified"
         private const val KEY_ZODIAC_SIGN = "zodiac_sign"
+
+        private const val KEY_WATCH_TIME = "watch_time_sec_v2"
+        private const val KEY_LIKES = "likes_count_v2"
+        private const val KEY_COMMENTS = "comments_count_v2"
+        private const val KEY_POSTS = "posts_count_v2"
+        private const val KEY_TREND_LINE = "trend_line_v2"
     }
+
+    var watchTimeSeconds: Int
+        get() = prefs.getInt(KEY_WATCH_TIME, 6 * 60) // starts with a realistic initial watch time of 6 mins
+        set(value) = prefs.edit().putInt(KEY_WATCH_TIME, value).apply()
+
+    var likesCount: Int
+        get() = prefs.getInt(KEY_LIKES, 4) // starts with realistic values
+        set(value) = prefs.edit().putInt(KEY_LIKES, value).apply()
+
+    var commentsCount: Int
+        get() = prefs.getInt(KEY_COMMENTS, 2)
+        set(value) = prefs.edit().putInt(KEY_COMMENTS, value).apply()
+
+    var postsCount: Int
+        get() = prefs.getInt(KEY_POSTS, 1)
+        set(value) = prefs.edit().putInt(KEY_POSTS, value).apply()
+
+    var trendLineCsv: String
+        get() = prefs.getString(KEY_TREND_LINE, "12,18,15,22,35,28,42") ?: "12,18,15,22,35,28,42"
+        set(value) = prefs.edit().putString(KEY_TREND_LINE, value).apply()
 
     var token: String?
         get() = prefs.getString(KEY_TOKEN, null)

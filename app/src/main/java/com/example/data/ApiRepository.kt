@@ -212,12 +212,47 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
     }
 
     suspend fun getActiveLives(): Result<List<LiveStreamItem>> {
+        if (preferencesManager.token == "mock_token") {
+            return Result.success(
+                listOf(
+                    LiveStreamItem(
+                        id = "mock_stream_1",
+                        userId = "user_lucas",
+                        username = "Lucas",
+                        avatarUrl = "https://i.pravatar.cc/150?u=lucas",
+                        title = "Gaming Retro — 100% Nostalgie 🎮",
+                        description = "Découverte de vieux jeux de console et discussion",
+                        thumbnailUrl = null,
+                        viewerCount = 42,
+                        isLive = true,
+                        startedAt = "2026-06-11T01:00:00Z",
+                        isPrivate = false,
+                        streamKey = null
+                    ),
+                    LiveStreamItem(
+                        id = "mock_stream_2",
+                        userId = "user_sophie",
+                        username = "Sophie_Art",
+                        avatarUrl = "https://i.pravatar.cc/150?u=sophie",
+                        title = "Dessin en direct et chill 🎨✨",
+                        description = "Je réalise vos requêtes de dessin, venez discuter !",
+                        thumbnailUrl = null,
+                        viewerCount = 118,
+                        isLive = true,
+                        startedAt = "2026-06-11T01:15:00Z",
+                        isPrivate = false,
+                        streamKey = null
+                    )
+                )
+            )
+        }
         return try {
             val response = apiService.getActiveLives()
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                Result.failure(Exception("Active lives fetched failed"))
+                val errorMsg = response.errorBody()?.string() ?: "Unknown error"
+                Result.failure(Exception("Get active lives failed: Error ${response.code()} ($errorMsg)"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -225,12 +260,26 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
     }
 
     suspend fun startLive(title: String, description: String?, isPrivate: Boolean): Result<LiveStreamCreateResponse> {
+        if (preferencesManager.token == "mock_token") {
+            return Result.success(
+                LiveStreamCreateResponse(
+                    id = "mock_live_" + java.util.UUID.randomUUID().toString().take(6),
+                    title = title,
+                    description = description,
+                    streamKey = "live_mock_key_123456",
+                    isPrivate = isPrivate,
+                    rtmpUrl = "rtmp://stream.strip-me.com/live/live_mock_key_123456",
+                    startedAt = "2026-06-11T01:30:00Z"
+                )
+            )
+        }
         return try {
             val response = apiService.startLive(LiveStreamCreateRequest(title, description, isPrivate))
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                Result.failure(Exception("Start live request failed"))
+                val errorMsg = response.errorBody()?.string() ?: "Unknown error"
+                Result.failure(Exception("Start live failed: Error ${response.code()} ($errorMsg)"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -238,12 +287,16 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
     }
 
     suspend fun stopLive(liveId: String): Result<Boolean> {
+        if (preferencesManager.token == "mock_token") {
+            return Result.success(true)
+        }
         return try {
             val response = apiService.stopLive(liveId)
             if (response.isSuccessful) {
                 Result.success(true)
             } else {
-                Result.failure(Exception("Stop live failed"))
+                val errorMsg = response.errorBody()?.string() ?: "Unknown error"
+                Result.failure(Exception("Stop live failed: Error ${response.code()} ($errorMsg)"))
             }
         } catch (e: Exception) {
             Result.failure(e)
