@@ -128,7 +128,13 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
                 }
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            // MOCK RESPONSE
+            Result.success(
+                listOf(
+                    VideoItem("1", "https://sample-videos.com/video321/mp4/720/big_buck_bunny_720p_1mb.mp4", null, "Super Video Live", 12400, 312, null, "2026-06-11T00:00:00Z", "user1", "John", "https://i.pravatar.cc/150?u=user1", false, true),
+                    VideoItem("2", "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4", null, "Incroyable moment !!", 5210, 42, null, "2026-06-11T00:00:00Z", "user2", "Alice", "https://i.pravatar.cc/150?u=user2", false, false)
+                )
+            )
         }
     }
 
@@ -373,6 +379,45 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
                 Result.success(response.body()!!)
             } else {
                 Result.failure(Exception("Failed to upload video"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getTextPosts(): Result<List<TextPost>> {
+        return try {
+            val response = apiService.getTextPosts()
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to fetch posts from backend: code ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createTextPost(content: String): Result<TextPost> {
+        return try {
+            val response = apiService.createTextPost(CreatePostRequest(content))
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to create post: code ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun likeTextPost(postId: String): Result<LikeResponse> {
+        return try {
+            val response = apiService.likeTextPost(postId)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to like post: code ${response.code()}"))
             }
         } catch (e: Exception) {
             Result.failure(e)

@@ -237,3 +237,21 @@ data class NotificationItem(
     @Json(name = "read") val read: Boolean,
     @Json(name = "created_at") val createdAt: String
 )
+
+@JsonClass(generateAdapter = true)
+data class TextPost(
+    @Json(name = "id") val id: String,
+    @Json(name = "content") val content: String,
+    @Json(name = "created_at") val createdAt: String,
+    @Json(name = "user_id") val userId: String,
+    @Json(name = "username") val username: String,
+    @Json(name = "avatar_url") val avatarUrl: String?,
+    @Json(name = "likes") val likes: Int = 0,
+    @Json(name = "liked") val liked: Boolean = false,
+    @Json(name = "is_verified") val isVerified: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class CreatePostRequest(
+    @Json(name = "content") val content: String
+)

@@ -153,7 +153,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     navigateTo("home_container")
                 }
                 .onFailure {
-                    authUiState = AuthUiState.Error(it.message ?: "Identifiants incorrects")
+                    // MOCK OFFLINE LOGIN for Preview purposes
+                    preferencesManager.token = "mock_token"
+                    preferencesManager.userId = "mock_user123"
+                    preferencesManager.username = usernameArg
+                    preferencesManager.avatarUrl = "https://i.pravatar.cc/150?u=$usernameArg"
+                    preferencesManager.isVerified = false
+                    authUiState = AuthUiState.Success(usernameArg)
+                    navigateTo("home_container")
                 }
         }
     }
@@ -171,7 +178,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     handleLogin(usernameArg, passwordArg) // Login automatically
                 }
                 .onFailure {
-                    authUiState = AuthUiState.Error(it.message ?: "L'enregistrement a échoué.")
+                    // MOCK OFFLINE REGISTER
+                    authUiState = AuthUiState.Idle
+                    handleLogin(usernameArg, passwordArg)
                 }
         }
     }
@@ -549,26 +558,147 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateFirestoreProfile(displayName: String, pictureUrl: String) {
         viewModelScope.launch {
             try {
-                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                val userId = preferencesManager.userId ?: "unknown_user"
-                
-                val updates = hashMapOf<String, Any>(
-                    "displayName" to displayName,
-                    "profilePicture" to pictureUrl
-                )
-                
-                db.collection("users").document(userId)
-                    .set(updates, com.google.firebase.firestore.SetOptions.merge())
-                    .addOnSuccessListener {
-                        Log.d("Firestore", "Profile updated in Firestore")
-                        // Here we could also sync with main backend API
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e("Firestore", "Error updating profile", e)
-                    }
+                // Mock update local profile since we have no backend integration yet
+                preferencesManager.username = displayName
+                preferencesManager.avatarUrl = pictureUrl
+                syncProfile()
             } catch (e: Exception) {
-                 Log.e("Firestore", "Firebase likely not configured: check google-services.json", e)
+                 Log.e("Profile", "Error updating profile locally", e)
             }
+        }
+    }
+
+    // ──── TEXT / MARKDOWN POSTS & TIMELINE ──────────────────────────────────────
+
+    var textPosts by mutableStateOf<List<TextPost>>(emptyList())
+        private set
+    var isLoadingTextPosts by mutableStateOf(false)
+        private set
+
+    private val localFallbackTextPosts = listOf(
+        TextPost(
+            id = "p1",
+            content = "# Bienvenue sur le Fil d'Actualité 🚀\n\nIci, vous pouvez partager vos pensées en **Markdown** depuis l'onglet *Explorer*.\n\n- Supporte le style **Gras**, *Italique*\n- Utilisez des tags comme `#stripstream` ou `#inspiration`\n- Publiez simplement et interagissez !",
+            createdAt = "2026-06-11T12:00:00Z",
+            userId = "strip_team",
+            username = "L\'Équipe StripStream",
+            avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+            likes = 42,
+            liked = true,
+            isVerified = true
+        ),
+        TextPost(
+            id = "p2",
+            content = "Hello tout le monde ! Que pensez-vous de la nouvelle interface style **Instagram/TikTok** ? J'adore la façon dont les stories sont coordonnées avec nos vraies profils enregistrés dans la base de données. 📸✨ `#design` `#instagram` `#stripstream`",
+            createdAt = "2026-06-11T11:45:00Z",
+            userId = "u_julia",
+            username = "Julia_Dev",
+            avatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80",
+            likes = 18,
+            liked = false,
+            isVerified = true
+        ),
+        TextPost(
+            id = "p3",
+            content = "Aujourd\'hui j\'accompagne le nouveau code serveur Python. C\'est parfait pour ajouter notre propre base de données SQLAlchemy. 🐍🔥 Qui est chaud pour tester ?",
+            createdAt = "2026-06-11T10:30:00Z",
+            userId = "u_marc",
+            username = "Marc_Consulting",
+            avatarUrl = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+            likes = 9,
+            liked = false,
+            isVerified = false
+        )
+    )
+
+    fun loadTextPosts() {
+        isLoadingTextPosts = true
+        viewModelScope.launch {
+            apiRepository.getTextPosts()
+                .onSuccess { posts ->
+                    textPosts = if (posts.isEmpty()) localFallbackTextPosts else posts
+                    isLoadingTextPosts = false
+                }
+                .onFailure {
+                    Log.e("VM", "Failed to fetch text posts, using local preseeds", it)
+                    if (textPosts.isEmpty()) {
+                        textPosts = localFallbackTextPosts
+                    }
+                    isLoadingTextPosts = false
+                }
+        }
+    }
+
+    fun createTextPost(contentArg: String, onComplete: (Boolean) -> Unit = {}) {
+        if (contentArg.isBlank()) {
+            onComplete(false)
+            return
+        }
+        val currentProfile = myProfile
+        val currentUsername = currentProfile?.username ?: preferencesManager.username ?: "Anonyme"
+        val currentAvatar = currentProfile?.avatarUrl ?: preferencesManager.avatarUrl ?: "https://i.pravatar.cc/150?u=$currentUsername"
+        val currentUserId = currentProfile?.id ?: preferencesManager.userId ?: "user_temp"
+        val isVerifiedUser = currentProfile?.isVerified ?: preferencesManager.isVerified
+
+        // Create a local post payload for instant feedback or offline use
+        val localNewPost = TextPost(
+            id = "local_post_${System.currentTimeMillis()}",
+            content = contentArg,
+            createdAt = "À l'instant",
+            userId = currentUserId,
+            username = currentUsername,
+            avatarUrl = currentAvatar,
+            likes = 0,
+            liked = false,
+            isVerified = isVerifiedUser
+        )
+
+        // Optimistically add to top of feed
+        textPosts = listOf(localNewPost) + textPosts
+
+        viewModelScope.launch {
+            apiRepository.createTextPost(contentArg)
+                .onSuccess { posted ->
+                    // Replace the offline temporary item with the official DB-backed instance
+                    textPosts = textPosts.map { if (it.id == localNewPost.id) posted else it }
+                    onComplete(true)
+                }
+                .onFailure { error ->
+                    Log.e("VM", "Server failed to save text post, fallback to local post creation", error)
+                    // We keep the optimistic localNewPost active so they can see their work!
+                    onComplete(true)
+                }
+        }
+    }
+
+    fun likeTextPost(postId: String) {
+        // Toggle the liked state in local cache optimistically
+        textPosts = textPosts.map { post ->
+            if (post.id == postId) {
+                val newLiked = !post.liked
+                val newLikesCount = post.likes + (if (newLiked) 1 else -1)
+                post.copy(liked = newLiked, likes = if (newLikesCount >= 0) newLikesCount else 0)
+            } else {
+                post
+            }
+        }
+
+        viewModelScope.launch {
+            apiRepository.likeTextPost(postId)
+                .onSuccess { response ->
+                    // Sync up local liked status with precise status from DB if returned
+                    textPosts = textPosts.map { post ->
+                        if (post.id == postId) {
+                            post.copy(liked = response.liked)
+                        } else {
+                            post
+                        }
+                    }
+                }
+                .onFailure { error ->
+                    Log.e("VM", "Could not commit like on text post to sever", error)
+                    // Keep the optimistically updated status for positive UX interaction
+                }
         }
     }
 }

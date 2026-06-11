@@ -139,4 +139,17 @@ interface ApiService {
         @Part("is_public") isPublic: Boolean,
         @Part("has_original_sound") hasOriginalSound: Boolean
     ): Response<UploadVideoResponse>
+
+    @GET("api/posts")
+    suspend fun getTextPosts(): Response<List<TextPost>>
+
+    @POST("api/posts")
+    suspend fun createTextPost(
+        @Body request: CreatePostRequest
+    ): Response<TextPost>
+
+    @POST("api/posts/{post_id}/like")
+    suspend fun likeTextPost(
+        @Path("post_id") postId: String
+    ): Response<LikeResponse>
 }

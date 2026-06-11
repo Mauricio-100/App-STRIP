@@ -44,6 +44,12 @@ import com.example.ui.viewmodels.AuthUiState
 import com.example.ui.viewmodels.MainViewModel
 import com.example.ui.viewmodels.VerifyUiState
 import kotlinx.coroutines.delay
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.isUnspecified
 
 // DESIGN THEME COLORS
 val NeonPink = Color(0xFFFF2D55)
@@ -565,6 +571,833 @@ fun UploadTabScreen(viewModel: MainViewModel) {
     }
 }
 
+// ──── INSTAGRAM STORIES & SHORTS REELS ──────────────────────────────────────────
+
+data class StoryItem(
+    val id: String,
+    val username: String,
+    val avatarUrl: String,
+    val mediaUrl: String,
+    val caption: String = ""
+)
+
+val mockStories = listOf(
+    StoryItem("s1", "Jean_d", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80", "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80", caption = "Départ en vacances ! 🏝️☀️"),
+    StoryItem("s2", "Alice_v", "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=200&q=80", "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=800&q=80", caption = "Nouveau projet incroyable 🎬✨"),
+    StoryItem("s3", "Marc_b", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80", "https://images.unsplash.com/photo-1488161628813-04466f872be2?auto=format&fit=crop&w=800&q=80", caption = "Gros entraînement aujourd'hui 💪🚿"),
+    StoryItem("s4", "Sophie_t", "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=200&q=80", "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=800&q=80", caption = "Coucher de soleil magique 🌅🧡"),
+    StoryItem("s5", "David_k", "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80", "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=800&q=80", caption = "Dîner de rêve entre amis 🥂✨")
+)
+
+@Composable
+fun StoriesRow(stories: List<StoryItem>, onStoryClick: (Int) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // "Votre story" button (like Instagram)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.clickable { /* Simule add story */ }
+        ) {
+            Box(contentAlignment = Alignment.BottomEnd) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(Color.DarkGray)
+                        .border(1.5.dp, Color.Gray, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(NeonPink)
+                        .border(1.5.dp, DeepMidnight, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Votre story", color = TextSecondary, fontSize = 11.sp)
+        }
+
+        // Active stories
+        stories.forEachIndexed { idx, story ->
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onStoryClick(idx) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(66.dp)
+                        .background(
+                            brush = Brush.sweepGradient(
+                                listOf(NeonPink, NeonCyan, GoldAccent, NeonPink)
+                            ),
+                            shape = CircleShape
+                        )
+                        .padding(2.5.dp)
+                        .background(DeepMidnight, CircleShape)
+                        .padding(3.dp)
+                ) {
+                    AsyncImage(
+                        model = story.avatarUrl,
+                        contentDescription = story.username,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(story.username, color = TextPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+fun StoryViewer(
+    stories: List<StoryItem>,
+    initialIndex: Int,
+    onClose: () -> Unit
+) {
+    var currentIndex by remember { mutableStateOf(initialIndex) }
+    val currentStory = stories.getOrNull(currentIndex) ?: return
+    
+    var progress by remember(currentIndex) { mutableStateOf(0f) }
+    
+    LaunchedEffect(currentIndex) {
+        progress = 0f
+        val steps = 100
+        val delayTime = 50L // 50 * 100 = 5000ms = 5s
+        for (i in 1..steps) {
+            delay(delayTime)
+            progress = i / 100f
+        }
+        if (currentIndex < stories.lastIndex) {
+            currentIndex++
+        } else {
+            onClose()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        val context = LocalContext.current
+        val isVideo = currentStory.mediaUrl.endsWith(".mp4", ignoreCase = true) || 
+                      currentStory.mediaUrl.contains("video", ignoreCase = true) || 
+                      currentStory.mediaUrl.contains(".m3u8", ignoreCase = true)
+
+        if (isVideo) {
+            val exoPlayer = remember(currentStory.id) {
+                androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                    setMediaItem(androidx.media3.common.MediaItem.fromUri(currentStory.mediaUrl))
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+                    prepare()
+                    playWhenReady = true
+                }
+            }
+            DisposableEffect(currentStory.id) {
+                onDispose {
+                    exoPlayer.release()
+                }
+            }
+            AndroidView(
+                factory = { ctx ->
+                    androidx.media3.ui.PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = false
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            AsyncImage(
+                model = currentStory.mediaUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.6f),
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.7f)
+                        )
+                    )
+                )
+        )
+
+        // Navigation sectors
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .weight(0.35f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        if (currentIndex > 0) {
+                            currentIndex--
+                        } else {
+                            onClose()
+                        }
+                    }
+            )
+            Box(
+                modifier = Modifier
+                    .weight(0.65f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        if (currentIndex < stories.lastIndex) {
+                            currentIndex++
+                        } else {
+                            onClose()
+                        }
+                    }
+            )
+        }
+
+        // Top progress indicator
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp, start = 12.dp, end = 12.dp)
+                .align(Alignment.TopCenter)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                stories.forEachIndexed { idx, _ ->
+                    val segmentProgress = when {
+                        idx < currentIndex -> 1f
+                        idx == currentIndex -> progress
+                        else -> 0f
+                    }
+                    LinearProgressIndicator(
+                        progress = segmentProgress,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(3.dp),
+                        color = NeonPink,
+                        trackColor = Color.White.copy(alpha = 0.3f)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    AsyncImage(
+                        model = currentStory.avatarUrl,
+                        contentDescription = currentStory.username,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.White, CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        currentStory.username,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                }
+            }
+        }
+
+        if (currentStory.caption.isNotEmpty()) {
+            Text(
+                text = currentStory.caption,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 40.dp)
+                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun TikTokShortsPageItem(
+    video: VideoItem,
+    isActive: Boolean,
+    onLike: () -> Unit,
+    onProfileClick: () -> Unit,
+    onCommentClick: () -> Unit
+) {
+    var isPlaying by remember(isActive) { mutableStateOf(isActive) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        if (video.videoUrl.isNotEmpty()) {
+            val context = LocalContext.current
+            val exoPlayer = remember {
+                androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                    setMediaItem(androidx.media3.common.MediaItem.fromUri(video.videoUrl))
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                    prepare()
+                }
+            }
+
+            LaunchedEffect(isPlaying, isActive) {
+                exoPlayer.playWhenReady = isPlaying && isActive
+            }
+
+            DisposableEffect(Unit) {
+                onDispose {
+                    exoPlayer.release()
+                }
+            }
+
+            AndroidView(
+                factory = { ctx ->
+                    androidx.media3.ui.PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = false
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Touch overlay to toggle play/pause
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) { isPlaying = !isPlaying }
+            )
+        } else {
+            AsyncImage(
+                model = video.thumbnailUrl ?: "android.resource://com.example/drawable/ic_launcher_background",
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        // Info overlay (bottom-left)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, end = 86.dp, bottom = 24.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onProfileClick() }
+            ) {
+                AsyncImage(
+                    model = video.avatarUrl ?: "https://i.pravatar.cc/150?u=${video.username}",
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .border(1.5.dp, NeonPink, CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = video.username,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        if (video.isVerified) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.CheckCircle, contentDescription = "Verifié", tint = NeonCyan, modifier = Modifier.size(14.dp))
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = video.description,
+                color = TextPrimary,
+                fontSize = 14.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        // Vertical action icons (right side)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 40.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(contentAlignment = Alignment.BottomCenter) {
+                AsyncImage(
+                    model = video.avatarUrl ?: "https://i.pravatar.cc/150?u=${video.username}",
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .border(1.5.dp, Color.White, CircleShape)
+                        .clickable { onProfileClick() },
+                    contentScale = ContentScale.Crop
+                )
+                Box(
+                    modifier = Modifier
+                        .offset(y = 6.dp)
+                        .size(16.dp)
+                        .background(NeonPink, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(
+                    onClick = onLike,
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = if (video.liked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = "Like",
+                        tint = if (video.liked) NeonPink else Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Text(
+                    text = "${video.likes}",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(
+                    onClick = onCommentClick,
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Comment,
+                        contentDescription = "Comments",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Text(
+                    text = "${video.views / 20}",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
+            IconButton(
+                onClick = {},
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    .size(44.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Share",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
+        // Large Play button indicator overlay (center)
+        if (!isPlaying) {
+            IconButton(
+                onClick = { isPlaying = true },
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(60.dp)
+                    .background(NeonPink.copy(alpha = 0.82f), CircleShape)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(36.dp))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun TikTokShortsPager(
+    viewModel: MainViewModel,
+    onCommentClick: (String) -> Unit
+) {
+    val items = viewModel.videoFeed
+    if (items.isEmpty()) return
+
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+        initialPage = 0,
+        pageCount = { items.size }
+    )
+
+    androidx.compose.foundation.pager.VerticalPager(
+        state = pagerState,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) { page ->
+        val video = items.getOrNull(page)
+        if (video != null) {
+            val isPageActive = pagerState.currentPage == page
+            TikTokShortsPageItem(
+                video = video,
+                isActive = isPageActive,
+                onLike = { viewModel.likeVideo(video.id) },
+                onProfileClick = { viewModel.viewOtherUserProfile(video.userId) },
+                onCommentClick = { onCommentClick(video.id) }
+            )
+        }
+    }
+}
+
+@Composable
+fun MarkdownText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    maxLines: Int = Int.MAX_VALUE
+) {
+    val annotatedString = remember(text) {
+        buildAnnotatedString {
+            val lines = text.split("\n")
+            lines.forEachIndexed { lineIdx, line ->
+                var stylizedLine = line
+                var isHeader = false
+                
+                if (stylizedLine.startsWith("# ")) {
+                    isHeader = true
+                    stylizedLine = stylizedLine.substring(2)
+                    withStyle(style = SpanStyle(fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = NeonPink)) {
+                        append(stylizedLine)
+                    }
+                } else if (stylizedLine.startsWith("## ")) {
+                    isHeader = true
+                    stylizedLine = stylizedLine.substring(3)
+                    withStyle(style = SpanStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = NeonCyan)) {
+                        append(stylizedLine)
+                    }
+                } else if (stylizedLine.startsWith("- ")) {
+                    append("  • ")
+                    stylizedLine = stylizedLine.substring(2)
+                }
+                
+                if (!isHeader) {
+                    var pos = 0
+                    while (pos < stylizedLine.length) {
+                        val nextBold = stylizedLine.indexOf("**", pos)
+                        val nextItalic = stylizedLine.indexOf("*", pos)
+                        val nextCode = stylizedLine.indexOf("`", pos)
+                        val nextTag = stylizedLine.indexOf("#", pos)
+                        
+                        val foundIndex = listOf(nextBold, nextItalic, nextCode, nextTag)
+                            .filter { it >= pos }
+                            .minOrNull() ?: -1
+                            
+                        if (foundIndex == -1) {
+                            append(stylizedLine.substring(pos))
+                            break
+                        }
+                        
+                        if (foundIndex > pos) {
+                            append(stylizedLine.substring(pos, foundIndex))
+                            pos = foundIndex
+                        }
+                        
+                        when (stylizedLine[pos]) {
+                            '*' -> {
+                                if (stylizedLine.startsWith("**", pos)) {
+                                    val closing = stylizedLine.indexOf("**", pos + 2)
+                                    if (closing != -1) {
+                                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                                            append(stylizedLine.substring(pos + 2, closing))
+                                        }
+                                        pos = closing + 2
+                                    } else {
+                                        append("**")
+                                        pos += 2
+                                    }
+                                } else {
+                                    val closing = stylizedLine.indexOf("*", pos + 1)
+                                    if (closing != -1) {
+                                        withStyle(style = SpanStyle(fontStyle = FontStyle.Italic)) {
+                                            append(stylizedLine.substring(pos + 1, closing))
+                                        }
+                                        pos = closing + 1
+                                    } else {
+                                        append("*")
+                                        pos += 1
+                                    }
+                                }
+                            }
+                            '`' -> {
+                                val closing = stylizedLine.indexOf("`", pos + 1)
+                                if (closing != -1) {
+                                    withStyle(style = SpanStyle(fontFamily = FontFamily.Monospace, background = Color.DarkGray.copy(alpha = 0.4f), color = NeonCyan)) {
+                                        append(stylizedLine.substring(pos + 1, closing))
+                                    }
+                                    pos = closing + 1
+                                } else {
+                                    append("`")
+                                    pos += 1
+                                }
+                            }
+                            '#' -> {
+                                var endIdx = pos + 1
+                                while (endIdx < stylizedLine.length && (stylizedLine[endIdx].isLetterOrDigit() || stylizedLine[endIdx] == '_')) {
+                                    endIdx++
+                                }
+                                if (endIdx > pos + 1) {
+                                    val tag = stylizedLine.substring(pos, endIdx)
+                                    withStyle(style = SpanStyle(color = NeonPink, fontWeight = FontWeight.SemiBold)) {
+                                        append(tag)
+                                    }
+                                    pos = endIdx
+                                } else {
+                                    append("#")
+                                    pos += 1
+                                }
+                            }
+                            else -> {
+                                append(stylizedLine[pos].toString())
+                                pos += 1
+                            }
+                        }
+                    }
+                }
+                
+                if (lineIdx < lines.lastIndex) {
+                    append("\n")
+                }
+            }
+        }
+    }
+    
+    val finalColor = if (color == Color.Unspecified) TextPrimary else color
+    val finalFontSize = if (fontSize == TextUnit.Unspecified) 14.sp else fontSize
+    
+    Text(
+        text = annotatedString,
+        modifier = modifier,
+        color = finalColor,
+        fontSize = finalFontSize,
+        fontWeight = fontWeight,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+fun TextPostCard(
+    post: TextPost,
+    onLike: () -> Unit,
+    onProfileClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header Row: User Info
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onProfileClick() }
+            ) {
+                AsyncImage(
+                    model = post.avatarUrl ?: "https://i.pravatar.cc/150?u=${post.username}",
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .border(1.5.dp, NeonPink, CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                
+                Spacer(modifier = Modifier.width(10.dp))
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = post.username,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        if (post.isVerified) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Vérifié",
+                                tint = NeonCyan,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = post.createdAt, 
+                        color = TextSecondary, 
+                        fontSize = 11.sp
+                    )
+                }
+
+                IconButton(onClick = { /* Plus options */ }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Body content: Styled Markdown text
+            MarkdownText(
+                text = post.content,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                color = TextPrimary,
+                fontSize = 14.sp
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Action footer
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Like Button
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { onLike() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (post.liked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = "Like",
+                        tint = if (post.liked) NeonPink else TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "${post.likes}",
+                        color = if (post.liked) NeonPink else TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Comment Button
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .clickable { /* Simule commentaires */ }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ChatBubbleOutline,
+                        contentDescription = "Comment",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Répondre",
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+                }
+
+                // Share Button
+                IconButton(onClick = {}) {
+                    Icon(
+                        imageVector = Icons.Outlined.Share,
+                        contentDescription = "Partager",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedTabScreen(viewModel: MainViewModel) {
@@ -572,50 +1405,87 @@ fun FeedTabScreen(viewModel: MainViewModel) {
     var selectedVideoForComments by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     var selectedSubTab by remember { mutableStateOf("explore") }
+    var activeStoryIndex by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(selectedSubTab) {
+        if (selectedSubTab == "explore") {
+            viewModel.loadTextPosts()
+        }
+    }
+
+    val derivedStories = remember(items) {
+        if (items.isEmpty()) {
+            mockStories
+        } else {
+            items.map { video ->
+                StoryItem(
+                    id = video.id,
+                    username = video.username,
+                    avatarUrl = video.avatarUrl ?: "https://i.pravatar.cc/150?u=${video.username}",
+                    mediaUrl = video.videoUrl,
+                    caption = video.description.ifEmpty { "Ma story StripStream !" }
+                )
+            }.distinctBy { it.username }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Top App Bar
+        if (selectedSubTab == "shorts") {
+            // "Shorts" Tab: Immersive full screen vertical TikTok style pager
+            if (viewModel.isLoadingFeed && items.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = NeonPink)
+                }
+            } else if (items.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.MovieFilter, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(60.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Aucune vidéo trouvée pour les Shorts.", color = TextSecondary, fontSize = 16.sp, textAlign = TextAlign.Center)
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(onClick = { viewModel.loadFeed() }, colors = ButtonDefaults.buttonColors(containerColor = NeonPink)) {
+                            Text("Recharger")
+                        }
+                    }
+                }
+            } else {
+                TikTokShortsPager(
+                    viewModel = viewModel,
+                    onCommentClick = { videoId ->
+                        selectedVideoForComments = videoId
+                        viewModel.loadVideoComments(videoId)
+                    }
+                )
+            }
+
+            // Floating Header over Shorts
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .statusBarsPadding(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Stream, contentDescription = "Logo", tint = NeonPink, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("STRIP", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { viewModel.navigateTo("search_screen") }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = TextPrimary)
-                    }
-                    IconButton(onClick = {
-                        viewModel.loadNotifications()
-                        viewModel.navigateTo("notifications_screen")
-                    }) {
-                        Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = TextPrimary)
-                    }
-                }
-            }
-
-            // Subtabs Row
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(vertical = 12.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.5f), Color.Transparent)
+                        )
+                    ),
+                horizontalArrangement = Arrangement.Center
             ) {
                 listOf("explore" to "Explorer", "foryou" to "Pour toi", "shorts" to "Shorts").forEach { (id, label) ->
                     val isSelected = selectedSubTab == id
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { selectedSubTab = id }) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clickable { selectedSubTab = id }
+                            .padding(horizontal = 14.dp)
+                    ) {
                         Text(
                             text = label,
                             color = if (isSelected) Color.White else TextSecondary,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             fontSize = 16.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
                         if (isSelected) {
                             Box(modifier = Modifier.height(3.dp).width(30.dp).background(NeonPink, RoundedCornerShape(1.dp)))
@@ -626,50 +1496,275 @@ fun FeedTabScreen(viewModel: MainViewModel) {
                 }
             }
 
-            if (viewModel.isLoadingFeed && items.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = NeonPink)
-                }
-            } else if (items.isEmpty()) {
-                Box(
+        } else {
+            // Standard feed layout with Instagram Stories row
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top App Bar
+                Row(
                     modifier = Modifier
-                        .weight(1f)
                         .fillMaxWidth()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .statusBarsPadding(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.MovieFilter, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(60.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Aucune vidéo trouvée sur le serveur.", color = TextSecondary, fontSize = 16.sp, textAlign = TextAlign.Center)
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Button(onClick = { viewModel.loadFeed() }, colors = ButtonDefaults.buttonColors(containerColor = NeonPink)) {
-                            Text("Recharger")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Stream, contentDescription = "Logo", tint = NeonPink, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("STRIP", color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { viewModel.navigateTo("search_screen") }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = TextPrimary)
+                        }
+                        IconButton(onClick = {
+                            viewModel.loadNotifications()
+                            viewModel.navigateTo("notifications_screen")
+                        }) {
+                            Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = TextPrimary)
                         }
                     }
                 }
-            } else {
-                val displayItems = when (selectedSubTab) {
-                    "foryou" -> items.shuffled()
-                    "shorts" -> items.reversed()
-                    else -> items
+
+                // Subtabs Row
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    listOf("explore" to "Explorer", "foryou" to "Pour toi", "shorts" to "Shorts").forEach { (id, label) ->
+                        val isSelected = selectedSubTab == id
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { selectedSubTab = id }) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) Color.White else TextSecondary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 16.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                            if (isSelected) {
+                                Box(modifier = Modifier.height(3.dp).width(30.dp).background(NeonPink, RoundedCornerShape(1.dp)))
+                            } else {
+                                Box(modifier = Modifier.height(3.dp).width(30.dp).background(Color.Transparent))
+                            }
+                        }
+                    }
                 }
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    items(displayItems) { video ->
-                        VideoFeedCard(
-                            video = video,
-                            onLike = { viewModel.likeVideo(video.id) },
-                            onProfileClick = { viewModel.viewOtherUserProfile(video.userId) },
-                            onView = { viewModel.incrementVideoView(video.id) },
-                            onCommentClick = {
-                                selectedVideoForComments = video.id
-                                viewModel.loadVideoComments(video.id)
+                if (selectedSubTab == "explore") {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Instagram Stories at the top of Explorer
+                        item {
+                            StoriesRow(stories = derivedStories, onStoryClick = { idx ->
+                                activeStoryIndex = idx
+                            })
+                            HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
+                        }
+
+                        // Publication Composer for Markdown text posts
+                        item {
+                            var postContent by remember { mutableStateOf("") }
+                            var isPublishing by remember { mutableStateOf(false) }
+                            val myProfile = viewModel.myProfile
+                            val myAvatar = myProfile?.avatarUrl ?: "https://i.pravatar.cc/150?u=${viewModel.preferencesManager.username ?: "me"}"
+
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                                border = BorderStroke(1.dp, Brush.linearGradient(listOf(NeonPink, NeonCyan))),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.Top,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        AsyncImage(
+                                            model = myAvatar,
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(CircleShape)
+                                                .border(1.5.dp, NeonPink, CircleShape),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            OutlinedTextField(
+                                                value = postContent,
+                                                onValueChange = { if (it.length <= 1000) postContent = it },
+                                                placeholder = { Text("Partagez une publication en Markdown... (**gras**, *italique*, # titre, `code`, `#tag`)", color = TextSecondary, fontSize = 13.5.sp) },
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = Color.Transparent,
+                                                    unfocusedBorderColor = Color.Transparent,
+                                                    focusedContainerColor = Color.Transparent,
+                                                    unfocusedContainerColor = Color.Transparent,
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
+                                                ),
+                                                modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp, max = 200.dp)
+                                            )
+                                        }
+                                    }
+                                    
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 1.dp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Markdown formatting info
+                                        Box(
+                                            modifier = Modifier
+                                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Markdown supporté 📝",
+                                                color = NeonCyan,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = "${postContent.length}/1000",
+                                                color = if (postContent.length >= 900) NeonPink else TextSecondary,
+                                                fontSize = 11.sp,
+                                                modifier = Modifier.padding(end = 12.dp)
+                                            )
+                                            
+                                            Button(
+                                                onClick = {
+                                                    if (postContent.isNotBlank() && !isPublishing) {
+                                                        isPublishing = true
+                                                        viewModel.createTextPost(postContent) { success ->
+                                                            isPublishing = false
+                                                            if (success) {
+                                                                postContent = ""
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                enabled = postContent.isNotBlank() && !isPublishing,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = NeonPink,
+                                                    disabledContainerColor = NeonPink.copy(alpha = 0.3f)
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(18.dp),
+                                                modifier = Modifier.height(34.dp).testTag("publish_post_button")
+                                            ) {
+                                                if (isPublishing) {
+                                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(14.dp), strokeWidth = 1.5.dp)
+                                                } else {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("Publier", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        )
+                        }
+
+                        // Fil d'actualité list of text posts
+                        val posts = viewModel.textPosts
+                        if (viewModel.isLoadingTextPosts && posts.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(40.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = NeonPink)
+                                }
+                            }
+                        } else if (posts.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(40.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("Aucune publication trouvée.", color = TextSecondary, fontSize = 14.sp)
+                                }
+                            }
+                        } else {
+                            items(posts) { post ->
+                                TextPostCard(
+                                    post = post,
+                                    onLike = { viewModel.likeTextPost(post.id) },
+                                    onProfileClick = { viewModel.viewOtherUserProfile(post.userId) }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Standard visual feed for "foryou" subtab
+                    if (viewModel.isLoadingFeed && items.isEmpty()) {
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = NeonPink)
+                        }
+                    } else if (items.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.MovieFilter, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(60.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("Aucune vidéo trouvée sur le serveur.", color = TextSecondary, fontSize = 16.sp, textAlign = TextAlign.Center)
+                                Spacer(modifier = Modifier.height(20.dp))
+                                Button(onClick = { viewModel.loadFeed() }, colors = ButtonDefaults.buttonColors(containerColor = NeonPink)) {
+                                    Text("Recharger")
+                                }
+                            }
+                        }
+                    } else {
+                        val displayItems = when (selectedSubTab) {
+                            "foryou" -> items.shuffled()
+                            else -> items
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            // Instagram Stories at the top of ForYou
+                            item {
+                                StoriesRow(stories = derivedStories, onStoryClick = { idx ->
+                                    activeStoryIndex = idx
+                                })
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
+                            }
+
+                            items(displayItems) { video ->
+                                VideoFeedCard(
+                                    video = video,
+                                    onLike = { viewModel.likeVideo(video.id) },
+                                    onProfileClick = { viewModel.viewOtherUserProfile(video.userId) },
+                                    onView = { viewModel.incrementVideoView(video.id) },
+                                    onCommentClick = {
+                                        selectedVideoForComments = video.id
+                                        viewModel.loadVideoComments(video.id)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -683,6 +1778,15 @@ fun FeedTabScreen(viewModel: MainViewModel) {
             ) {
                 CommentsSheetContent(viewModel = viewModel, videoId = selectedVideoForComments!!)
             }
+        }
+
+        // Animated full screen story viewer
+        if (activeStoryIndex != null) {
+            StoryViewer(
+                stories = derivedStories,
+                initialIndex = activeStoryIndex!!,
+                onClose = { activeStoryIndex = null }
+            )
         }
     }
 }
@@ -770,7 +1874,7 @@ fun VideoFeedCard(video: VideoItem, onLike: () -> Unit, onProfileClick: () -> Un
         onView()
     }
 
-    var isPlaying by remember { mutableStateOf(true) }
+    var isPlaying by remember { mutableStateOf(false) }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -789,21 +1893,33 @@ fun VideoFeedCard(video: VideoItem, onLike: () -> Unit, onProfileClick: () -> Un
                     .clickable { isPlaying = !isPlaying }
             ) {
                 if (video.videoUrl.isNotEmpty()) {
+                    val context = LocalContext.current
+                    val exoPlayer = remember {
+                        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                            setMediaItem(androidx.media3.common.MediaItem.fromUri(video.videoUrl))
+                            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                            prepare()
+                        }
+                    }
+                    LaunchedEffect(isPlaying) {
+                        exoPlayer.playWhenReady = isPlaying
+                    }
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            exoPlayer.release()
+                        }
+                    }
                     AndroidView(
-                        factory = { context ->
-                            VideoView(context).apply {
-                                setVideoURI(Uri.parse(video.videoUrl))
-                                setOnPreparedListener { mp ->
-                                    mp.isLooping = true
-                                    start()
-                                }
+                        factory = { ctx ->
+                            androidx.media3.ui.PlayerView(ctx).apply {
+                                player = exoPlayer
+                                useController = false
                             }
-                        },
-                        update = { view ->
-                            if (isPlaying) view.start() else view.pause()
                         },
                         modifier = Modifier.fillMaxSize()
                     )
+                    // Intercept clicks before they reach PlayerView
+                    Box(modifier = Modifier.matchParentSize().clickable { isPlaying = !isPlaying })
                 } else {
                     // Simulated pulsing visual element if no videoUrl
                     val infiniteTransition = rememberInfiniteTransition(label = "simulated_playback")
