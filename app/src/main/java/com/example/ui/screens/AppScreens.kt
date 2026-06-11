@@ -54,13 +54,14 @@ import androidx.compose.foundation.text.ClickableText
 
 
 // DESIGN THEME COLORS
-val NeonPink = Color(0xFFFF2D55)
-val NeonCyan = Color(0xFF00F0FF)
+val NeonPink = Color(0xFF8A2BE2) // Violet électrique (kept name NeonPink for codebase compatibility or can just change hex)
+val NeonCyan = Color(0xFF00E5FF) // Electric blue/cyan
 val DeepMidnight = Color(0xFF09090F)
 val DarkSurface = Color(0xFF161622)
 val GoldAccent = Color(0xFFFFCC00)
 val TextPrimary = Color(0xFFF2F2F7)
 val TextSecondary = Color(0xFF8E8E93)
+
 
 // ──── LOGIN SCREEN ────────────────────────────────────────────────────────
 @Composable
@@ -102,18 +103,27 @@ fun LoginScreen(viewModel: MainViewModel) {
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "STRIP STREAM",
+                text = "C.M.O - STREAMING",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextPrimary,
                 letterSpacing = 2.sp
             )
             Text(
-                text = "Temps Réel & Live Interactif",
+                text = "Par STRIP La C.M.O | TikTok: @connect.online\nDiscord: discord.gg/7fwdrAPGr | YT: C.M.O",
+                fontSize = 11.sp,
+                color = TextSecondary,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 0.5.sp,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "Réseau Social Hybride & Live",
                 fontSize = 14.sp,
                 color = NeonCyan,
                 fontWeight = FontWeight.Medium,
-                letterSpacing = 1.sp
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 8.dp)
             )
 
             Spacer(modifier = Modifier.height(40.dp))
@@ -254,15 +264,22 @@ fun RegisterScreen(viewModel: MainViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "REJOINDRE STRIP",
+                text = "C.M.O - STREAMING",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextPrimary
             )
             Text(
+                text = "Par STRIP La C.M.O | TikTok : @connect.online\nDiscord: discord.gg/7fwdrAPGr | YT: C.M.O",
+                fontSize = 11.sp,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 4.dp),
+                textAlign = TextAlign.Center
+            )
+            Text(
                 text = "Créez votre profil en quelques secondes",
                 fontSize = 12.sp,
-                color = TextSecondary,
+                color = NeonCyan,
                 modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)
             )
 
@@ -367,112 +384,211 @@ fun RegisterScreen(viewModel: MainViewModel) {
 }
 
 
-// ──── MAIN CONTAINER (WITH BOTTOM NAV BAR) ─────────────────────────────────
+// ──── MAIN CONTAINER (RESPONSIVE WITH NAV BAR/RAIL) ─────────────────────────────────
 @Composable
 fun MainContainer(viewModel: MainViewModel) {
-    Scaffold(
-        bottomBar = {
-            NavigationBar(
-                containerColor = DeepMidnight,
-                tonalElevation = 8.dp,
-                windowInsets = WindowInsets.navigationBars
-            ) {
-                NavigationBarItem(
-                    selected = viewModel.currentHomeTab == "feed",
-                    onClick = { viewModel.setHomeTab("feed") },
-                    icon = { Icon(if (viewModel.currentHomeTab == "feed") Icons.Default.Home else Icons.Outlined.Home, contentDescription = "Feed") },
-                    label = { Text("Feed", fontWeight = FontWeight.Bold) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NeonPink,
-                        selectedTextColor = NeonPink,
-                        indicatorColor = NeonPink.copy(alpha = 0.12f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
-                    )
-                )
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val useNavRail = maxWidth > 600.dp
 
-                NavigationBarItem(
-                    selected = viewModel.currentHomeTab == "lives",
-                    onClick = { viewModel.setHomeTab("lives") },
-                    icon = { Icon(if (viewModel.currentHomeTab == "lives") Icons.Default.Tv else Icons.Outlined.Tv, contentDescription = "Lives") },
-                    label = { Text("Lives", fontWeight = FontWeight.Bold) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NeonCyan,
-                        selectedTextColor = NeonCyan,
-                        indicatorColor = NeonCyan.copy(alpha = 0.12f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
+        if (useNavRail) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                NavigationRail(
+                    containerColor = DeepMidnight,
+                    modifier = Modifier.width(80.dp)
+                ) {
+                    Spacer(modifier = Modifier.height(32.dp))
+                    
+                    NavigationRailItem(
+                        selected = viewModel.currentHomeTab == "feed",
+                        onClick = { viewModel.setHomeTab("feed") },
+                        icon = { Icon(if (viewModel.currentHomeTab == "feed") Icons.Default.Home else Icons.Outlined.Home, contentDescription = "Feed") },
+                        label = { Text("Feed", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = NeonPink, selectedTextColor = NeonPink,
+                            indicatorColor = NeonPink.copy(alpha = 0.12f),
+                            unselectedIconColor = TextSecondary, unselectedTextColor = TextSecondary
+                        )
                     )
-                )
-
-                NavigationBarItem(
-                    selected = viewModel.currentHomeTab == "chat",
-                    onClick = { viewModel.setHomeTab("chat") },
-                    icon = { Icon(if (viewModel.currentHomeTab == "chat") Icons.Default.ChatBubble else Icons.Outlined.ChatBubble, contentDescription = "Messagerie") },
-                    label = { Text("Chat", fontWeight = FontWeight.Bold) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NeonPink,
-                        selectedTextColor = NeonPink,
-                        indicatorColor = NeonPink.copy(alpha = 0.12f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NavigationRailItem(
+                        selected = viewModel.currentHomeTab == "lives",
+                        onClick = { viewModel.setHomeTab("lives") },
+                        icon = { Icon(if (viewModel.currentHomeTab == "lives") Icons.Default.Tv else Icons.Outlined.Tv, contentDescription = "Lives") },
+                        label = { Text("Lives", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = NeonCyan, selectedTextColor = NeonCyan,
+                            indicatorColor = NeonCyan.copy(alpha = 0.12f),
+                            unselectedIconColor = TextSecondary, unselectedTextColor = TextSecondary
+                        )
                     )
-                )
-
-                NavigationBarItem(
-                    selected = viewModel.currentHomeTab == "upload",
-                    onClick = { viewModel.setHomeTab("upload") },
-                    icon = { Icon(Icons.Default.AddCircle, contentDescription = "Upload", modifier = Modifier.size(36.dp)) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = Color.White,
-                        indicatorColor = Color.Transparent,
-                        unselectedIconColor = Color.White
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NavigationRailItem(
+                        selected = viewModel.currentHomeTab == "chat",
+                        onClick = { viewModel.setHomeTab("chat") },
+                        icon = { Icon(if (viewModel.currentHomeTab == "chat") Icons.Default.ChatBubble else Icons.Outlined.ChatBubble, contentDescription = "Messagerie") },
+                        label = { Text("Chat", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = NeonPink, selectedTextColor = NeonPink,
+                            indicatorColor = NeonPink.copy(alpha = 0.12f),
+                            unselectedIconColor = TextSecondary, unselectedTextColor = TextSecondary
+                        )
                     )
-                )
-
-                NavigationBarItem(
-                    selected = viewModel.currentHomeTab == "stats",
-                    onClick = { viewModel.setHomeTab("stats") },
-                    icon = { Icon(if (viewModel.currentHomeTab == "stats") Icons.Default.BarChart else Icons.Outlined.BarChart, contentDescription = "Server Stats") },
-                    label = { Text("Stats", fontWeight = FontWeight.Bold) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = NeonCyan,
-                        selectedTextColor = NeonCyan,
-                        indicatorColor = NeonCyan.copy(alpha = 0.12f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NavigationRailItem(
+                        selected = viewModel.currentHomeTab == "upload",
+                        onClick = { viewModel.setHomeTab("upload") },
+                        icon = { Icon(Icons.Default.AddCircle, contentDescription = "Upload", modifier = Modifier.size(36.dp)) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = Color.White, indicatorColor = Color.Transparent, unselectedIconColor = Color.White
+                        )
                     )
-                )
-
-                NavigationBarItem(
-                    selected = viewModel.currentHomeTab == "profile",
-                    onClick = { viewModel.setHomeTab("profile") },
-                    icon = { Icon(if (viewModel.currentHomeTab == "profile") Icons.Default.AccountBox else Icons.Outlined.AccountBox, contentDescription = "Profile") },
-                    label = { Text("Moi", fontWeight = FontWeight.Bold) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = GoldAccent,
-                        selectedTextColor = GoldAccent,
-                        indicatorColor = GoldAccent.copy(alpha = 0.12f),
-                        unselectedIconColor = TextSecondary,
-                        unselectedTextColor = TextSecondary
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NavigationRailItem(
+                        selected = viewModel.currentHomeTab == "stats",
+                        onClick = { viewModel.setHomeTab("stats") },
+                        icon = { Icon(if (viewModel.currentHomeTab == "stats") Icons.Default.BarChart else Icons.Outlined.BarChart, contentDescription = "Server Stats") },
+                        label = { Text("Stats", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = NeonCyan, selectedTextColor = NeonCyan,
+                            indicatorColor = NeonCyan.copy(alpha = 0.12f),
+                            unselectedIconColor = TextSecondary, unselectedTextColor = TextSecondary
+                        )
                     )
-                )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NavigationRailItem(
+                        selected = viewModel.currentHomeTab == "profile",
+                        onClick = { viewModel.setHomeTab("profile") },
+                        icon = { Icon(if (viewModel.currentHomeTab == "profile") Icons.Default.AccountBox else Icons.Outlined.AccountBox, contentDescription = "Profile") },
+                        label = { Text("Moi", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
+                        colors = NavigationRailItemDefaults.colors(
+                            selectedIconColor = GoldAccent, selectedTextColor = GoldAccent,
+                            indicatorColor = GoldAccent.copy(alpha = 0.12f),
+                            unselectedIconColor = TextSecondary, unselectedTextColor = TextSecondary
+                        )
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(1f)
+                        .background(DeepMidnight)
+                ) {
+                    when (viewModel.currentHomeTab) {
+                        "feed" -> FeedTabScreen(viewModel)
+                        "lives" -> LivesTabScreen(viewModel)
+                        "chat" -> ChatTabScreen(viewModel)
+                        "upload" -> UploadTabScreen(viewModel)
+                        "stats" -> StatsTabScreen(viewModel)
+                        "profile" -> ProfileTabScreen(viewModel)
+                    }
+                }
             }
-        }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(DeepMidnight)
-                .padding(paddingValues)
-        ) {
-            when (viewModel.currentHomeTab) {
-                "feed" -> FeedTabScreen(viewModel)
-                "lives" -> LivesTabScreen(viewModel)
-                "chat" -> ChatTabScreen(viewModel)
-                "upload" -> UploadTabScreen(viewModel)
-                "stats" -> StatsTabScreen(viewModel)
-                "profile" -> ProfileTabScreen(viewModel)
+        } else {
+            Scaffold(
+                bottomBar = {
+                    NavigationBar(
+                        containerColor = DeepMidnight,
+                        tonalElevation = 8.dp,
+                        windowInsets = WindowInsets.navigationBars
+                    ) {
+                        NavigationBarItem(
+                            selected = viewModel.currentHomeTab == "feed",
+                            onClick = { viewModel.setHomeTab("feed") },
+                            icon = { Icon(if (viewModel.currentHomeTab == "feed") Icons.Default.Home else Icons.Outlined.Home, contentDescription = "Feed") },
+                            label = { Text("Feed", fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NeonPink,
+                                selectedTextColor = NeonPink,
+                                indicatorColor = NeonPink.copy(alpha = 0.12f),
+                                unselectedIconColor = TextSecondary,
+                                unselectedTextColor = TextSecondary
+                            )
+                        )
+        
+                        NavigationBarItem(
+                            selected = viewModel.currentHomeTab == "lives",
+                            onClick = { viewModel.setHomeTab("lives") },
+                            icon = { Icon(if (viewModel.currentHomeTab == "lives") Icons.Default.Tv else Icons.Outlined.Tv, contentDescription = "Lives") },
+                            label = { Text("Lives", fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NeonCyan,
+                                selectedTextColor = NeonCyan,
+                                indicatorColor = NeonCyan.copy(alpha = 0.12f),
+                                unselectedIconColor = TextSecondary,
+                                unselectedTextColor = TextSecondary
+                            )
+                        )
+        
+                        NavigationBarItem(
+                            selected = viewModel.currentHomeTab == "chat",
+                            onClick = { viewModel.setHomeTab("chat") },
+                            icon = { Icon(if (viewModel.currentHomeTab == "chat") Icons.Default.ChatBubble else Icons.Outlined.ChatBubble, contentDescription = "Messagerie") },
+                            label = { Text("Chat", fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NeonPink,
+                                selectedTextColor = NeonPink,
+                                indicatorColor = NeonPink.copy(alpha = 0.12f),
+                                unselectedIconColor = TextSecondary,
+                                unselectedTextColor = TextSecondary
+                            )
+                        )
+        
+                        NavigationBarItem(
+                            selected = viewModel.currentHomeTab == "upload",
+                            onClick = { viewModel.setHomeTab("upload") },
+                            icon = { Icon(Icons.Default.AddCircle, contentDescription = "Upload", modifier = Modifier.size(36.dp)) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                indicatorColor = Color.Transparent,
+                                unselectedIconColor = Color.White
+                            )
+                        )
+        
+                        NavigationBarItem(
+                            selected = viewModel.currentHomeTab == "stats",
+                            onClick = { viewModel.setHomeTab("stats") },
+                            icon = { Icon(if (viewModel.currentHomeTab == "stats") Icons.Default.BarChart else Icons.Outlined.BarChart, contentDescription = "Server Stats") },
+                            label = { Text("Stats", fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = NeonCyan,
+                                selectedTextColor = NeonCyan,
+                                indicatorColor = NeonCyan.copy(alpha = 0.12f),
+                                unselectedIconColor = TextSecondary,
+                                unselectedTextColor = TextSecondary
+                            )
+                        )
+        
+                        NavigationBarItem(
+                            selected = viewModel.currentHomeTab == "profile",
+                            onClick = { viewModel.setHomeTab("profile") },
+                            icon = { Icon(if (viewModel.currentHomeTab == "profile") Icons.Default.AccountBox else Icons.Outlined.AccountBox, contentDescription = "Profile") },
+                            label = { Text("Moi", fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = GoldAccent,
+                                selectedTextColor = GoldAccent,
+                                indicatorColor = GoldAccent.copy(alpha = 0.12f),
+                                unselectedIconColor = TextSecondary,
+                                unselectedTextColor = TextSecondary
+                            )
+                        )
+                    }
+                }
+            ) { paddingValues ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(DeepMidnight)
+                        .padding(paddingValues)
+                ) {
+                    when (viewModel.currentHomeTab) {
+                        "feed" -> FeedTabScreen(viewModel)
+                        "lives" -> LivesTabScreen(viewModel)
+                        "chat" -> ChatTabScreen(viewModel)
+                        "upload" -> UploadTabScreen(viewModel)
+                        "stats" -> StatsTabScreen(viewModel)
+                        "profile" -> ProfileTabScreen(viewModel)
+                    }
+                }
             }
         }
     }
