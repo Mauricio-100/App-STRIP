@@ -2,6 +2,7 @@ package com.example.data
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -28,12 +29,25 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
         })
         .build()
 
-    private val apiService = Retrofit.Builder()
-        .baseUrl("https://hoosthubs-g.onrender.com/")
-        .client(httpClient)
-        .addConverterFactory(MoshiConverterFactory.create(moshi))
-        .build()
-        .create(ApiService::class.java)
+    private var lastUsedServerUrl = ""
+    private var cachedApiService: ApiService? = null
+
+    private val apiService: ApiService
+        get() {
+            val currentUrl = preferencesManager.serverUrl.trim().let {
+                if (it.endsWith("/")) it else "$it/"
+            }
+            if (cachedApiService == null || lastUsedServerUrl != currentUrl) {
+                lastUsedServerUrl = currentUrl
+                cachedApiService = Retrofit.Builder()
+                    .baseUrl(currentUrl)
+                    .client(httpClient)
+                    .addConverterFactory(MoshiConverterFactory.create(moshi))
+                    .build()
+                    .create(ApiService::class.java)
+            }
+            return cachedApiService!!
+        }
 
     suspend fun login(username: String, password: String): Result<LoginResponse> {
         return try {
@@ -396,6 +410,31 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
         }
     }
 
+    suspend fun updateProfileWithAvatar(
+        bio: String?,
+        phoneNumber: String?,
+        avatarBytes: ByteArray?,
+        avatarMimeType: String? = "image/jpeg"
+    ): Result<Map<String, String>> {
+        return try {
+            val bioPart = bio?.let { okhttp3.RequestBody.create(okhttp3.MultipartBody.FORM, it) }
+            val phonePart = phoneNumber?.let { okhttp3.RequestBody.create(okhttp3.MultipartBody.FORM, it) }
+            val avatarPart = avatarBytes?.let { bytes ->
+                val mediaType = (avatarMimeType ?: "image/jpeg").toMediaTypeOrNull()
+                val requestBody = okhttp3.RequestBody.create(mediaType, bytes)
+                okhttp3.MultipartBody.Part.createFormData("avatar", "avatar.jpg", requestBody)
+            }
+            val response = apiService.updateProfile(bioPart, phonePart, avatarPart)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to update profile: code ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getVideoComments(videoId: String): Result<List<VideoComment>> {
         return try {
             val response = apiService.getVideoComments(videoId)
@@ -422,16 +461,30 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
         }
     }
 
-    suspend fun uploadVideo(description: String): Result<UploadVideoResponse> {
+    suspend fun uploadVideo(
+        context: android.content.Context, 
+        videoUri: android.net.Uri, 
+        description: String, 
+        isPublic: Boolean, 
+        hasOriginalSound: Boolean
+    ): Result<UploadVideoResponse> {
         return try {
-            val emptyBody = okhttp3.RequestBody.create(null, ByteArray(0))
-            val videoPart = okhttp3.MultipartBody.Part.createFormData("video", "video.mp4", emptyBody)
+            val contentResolver = context.contentResolver
+            val inputStream = contentResolver.openInputStream(videoUri) ?: throw Exception("Cannot open stream")
+            val bytes = inputStream.readBytes()
+            inputStream.close()
+            
+            val mimeType = contentResolver.getType(videoUri) ?: "video/mp4"
+            val mediaType = mimeType.toMediaTypeOrNull()
+            val requestBody = okhttp3.RequestBody.create(mediaType, bytes)
+            val videoPart = okhttp3.MultipartBody.Part.createFormData("video", "upload.mp4", requestBody)
             val descBody = okhttp3.RequestBody.create(okhttp3.MultipartBody.FORM, description)
-            val response = apiService.uploadVideo(videoPart, descBody, true, true)
+            
+            val response = apiService.uploadVideo(videoPart, descBody, isPublic, hasOriginalSound)
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                Result.failure(Exception("Failed to upload video"))
+                Result.failure(Exception("Failed to upload video: ${response.code()}"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -471,6 +524,48 @@ class ApiRepository(private val preferencesManager: PreferencesManager) {
                 Result.success(response.body()!!)
             } else {
                 Result.failure(Exception("Failed to like post: code ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getStories(): Result<List<StoryItemResponse>> {
+        return try {
+            val response = apiService.getStories()
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to load stories: code ${response.code()}"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun uploadStory(
+        context: android.content.Context,
+        fileUri: android.net.Uri,
+        effect: String?
+    ): Result<Map<String, Any>> {
+        return try {
+            val contentResolver = context.contentResolver
+            val inputStream = contentResolver.openInputStream(fileUri) ?: throw Exception("Cannot open stream")
+            val bytes = inputStream.readBytes()
+            inputStream.close()
+            
+            val mimeType = contentResolver.getType(fileUri) ?: "image/jpeg"
+            val mediaType = mimeType.toMediaTypeOrNull()
+            val requestBody = okhttp3.RequestBody.create(mediaType, bytes)
+            val filePart = okhttp3.MultipartBody.Part.createFormData("file", "story_upload.jpg", requestBody)
+            
+            val effectBody = effect?.let { okhttp3.RequestBody.create(okhttp3.MultipartBody.FORM, it) }
+            
+            val response = apiService.uploadStory(filePart, effectBody)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("Failed to upload story: ${response.code()}"))
             }
         } catch (e: Exception) {
             Result.failure(e)

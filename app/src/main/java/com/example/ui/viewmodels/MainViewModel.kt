@@ -45,6 +45,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var authUiState by mutableStateOf<AuthUiState>(AuthUiState.Idle)
         private set
 
+    var serverTestState by mutableStateOf<String>("") // "", "TESTING", "SUCCESS", "FAILED"
+        private set
+
     // Profile variables
     var myProfile by mutableStateOf<UserProfile?>(null)
         private set
@@ -101,6 +104,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Notifications
     var notifications by mutableStateOf<List<NotificationItem>>(emptyList())
     var isLoadingNotifications by mutableStateOf(false)
+
+    // Real-Time Activity Feed & Filter
+    var activityFeed by mutableStateOf<List<com.example.data.CyberActivityFeedItem>>(emptyList())
+    var currentChatSubTab by mutableStateOf("discussions") // "discussions" vs "activities"
+
 
     // --- REAL-TIME DETAILED ACTIVITY METRICS ---
     var userWatchTimeSeconds by mutableStateOf(preferencesManager.watchTimeSeconds)
@@ -166,6 +174,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isWebSocketConnected: StateFlow<Boolean> = _isWebSocketConnected.asStateFlow()
 
     init {
+        startActivityFeedSimulation()
         if (preferencesManager.isLoggedIn()) {
             initializeFallbackProfile()
             initializeFallbackStats()
@@ -174,6 +183,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             loadFeed()
             loadStats()
         }
+    }
+
+    fun logout() {
+        preferencesManager.clear()
+        webSocketManager.disconnect()
+        currentScreen = "login"
+        videoFeed = emptyList()
+        myProfile = null
+        appStats = null
     }
 
     fun navigateTo(screen: String) {
@@ -192,6 +210,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         currentHomeTab = tab
         when (tab) {
             "feed" -> loadFeed()
+            "actfile" -> {
+                loadTextPosts()
+                loadStories()
+            }
             "lives" -> loadActiveLives()
             "chat" -> loadConversations()
             "stats" -> loadStats()
@@ -329,11 +351,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val avUrl = preferencesManager.avatarUrl ?: "https://api.dicebear.com/7.x/pixel-art/svg?seed=$uname"
         val verified = preferencesManager.isVerified
         val zodiac = preferencesManager.zodiacSign
+        val bioVal = preferencesManager.bio ?: "Mode local d'urgence (Serveur de secours autonome)"
         myProfile = UserProfile(
             id = uid,
             username = uname,
             avatarUrl = avUrl,
-            bio = "Mode local d'urgence (Serveur de secours autonome)",
+            bio = bioVal,
             email = "contact@$uname.com",
             phoneNumber = "+33 6 12 34 56 78",
             isVerified = verified,
@@ -582,6 +605,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         chatMessages = chatMessages + selfMessage
     }
 
+    fun sendMediaMessage(content: String, type: String = "image") {
+        val peer = activeChatUser ?: return
+        val myName = preferencesManager.username ?: "Moi"
+
+        // Send via WebSocket Manager
+        webSocketManager.sendMessage(
+            receiverId = peer.userId,
+            content = content,
+            msgType = type,
+            senderUsername = myName
+        )
+
+        // Prepend dynamically to Chat List
+        val selfMessage = ChatMessage(
+            id = java.util.UUID.randomUUID().toString(),
+            content = content,
+            type = type,
+            senderId = preferencesManager.userId ?: "",
+            receiverId = peer.userId,
+            createdAt = "À l'instant",
+            senderUsername = myName,
+            read = true
+        )
+        chatMessages = chatMessages + selfMessage
+    }
+
     fun updateTypingState(isTyping: Boolean) {
         val peer = activeChatUser ?: return
         webSocketManager.sendTyping(peer.userId, isTyping)
@@ -624,6 +673,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetVerifyState() {
         verifyUiState = VerifyUiState.Idle
+    }
+
+    fun resetServerTestState() {
+        serverTestState = ""
+    }
+
+    fun testServerConnection(url: String) {
+        serverTestState = "TESTING"
+        viewModelScope.launch {
+            try {
+                val formatted = if (url.endsWith("/")) url else "$url/"
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val request = okhttp3.Request.Builder()
+                    .url("${formatted}health")
+                    .build()
+                
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            serverTestState = "SUCCESS"
+                        } else {
+                            serverTestState = "FAILED"
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                try {
+                    val formatted = if (url.endsWith("/")) url else "$url/"
+                    val client = okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    val request = okhttp3.Request.Builder()
+                        .url(formatted)
+                        .build()
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful || response.code in 200..404) {
+                                serverTestState = "SUCCESS"
+                            } else {
+                                serverTestState = "FAILED"
+                            }
+                        }
+                    }
+                } catch (ex: Exception) {
+                    serverTestState = "FAILED"
+                }
+            }
+        }
     }
 
     fun loadStats() {
@@ -732,12 +833,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun uploadVideo(description: String) {
+    fun uploadVideo(context: android.content.Context, videoUri: android.net.Uri, description: String, isPublic: Boolean = true, hasOriginalSound: Boolean = false) {
         viewModelScope.launch {
-            apiRepository.uploadVideo(description)
+            apiRepository.uploadVideo(context, videoUri, description, isPublic, hasOriginalSound)
                 .onSuccess {
                     // Refresh feed if needed
                     loadFeed()
+                    setHomeTab("feed")
                 }
                 .onFailure {
                     Log.e("VM", "Failed to upload video", it)
@@ -754,6 +856,95 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 syncProfile()
             } catch (e: Exception) {
                  Log.e("Profile", "Error updating profile locally", e)
+            }
+        }
+    }
+
+    fun updateCyberProfile(
+        context: android.content.Context,
+        newUsername: String,
+        newBio: String,
+        avatarBytes: ByteArray?,
+        onComplete: (Boolean) -> Unit
+    ) {
+        val previousBio = myProfile?.bio ?: preferencesManager.bio
+        val previousAvatarUrl = myProfile?.avatarUrl ?: preferencesManager.avatarUrl
+
+        viewModelScope.launch {
+            try {
+                preferencesManager.username = newUsername
+                preferencesManager.bio = newBio
+                
+                if (avatarBytes != null) {
+                    val file = java.io.File(context.cacheDir, "temp_avatar_${System.currentTimeMillis()}.jpg")
+                    try {
+                        file.outputStream().use { it.write(avatarBytes) }
+                        preferencesManager.avatarUrl = file.absolutePath
+                    } catch (e: Exception) {
+                        Log.e("VM", "Failed to cache profile photo", e)
+                    }
+                }
+                
+                myProfile = myProfile?.copy(
+                    username = newUsername,
+                    bio = newBio,
+                    avatarUrl = preferencesManager.avatarUrl ?: myProfile?.avatarUrl
+                )
+
+                // Add self update to the real-time activity feed!
+                val selfUpdateItems = mutableListOf<com.example.data.CyberActivityFeedItem>()
+                val myUid = myProfile?.id ?: preferencesManager.userId ?: "user_me"
+                val finalAvatar = preferencesManager.avatarUrl ?: myProfile?.avatarUrl
+                
+                if (newBio != previousBio) {
+                    selfUpdateItems.add(
+                        com.example.data.CyberActivityFeedItem(
+                            id = "feed_user_bio_${System.currentTimeMillis()}",
+                            userId = myUid,
+                            username = newUsername,
+                            avatarUrl = finalAvatar,
+                            type = "BIO_CHANGE",
+                            previousValue = previousBio,
+                            newValue = newBio,
+                            timestamp = "À l'instant"
+                        )
+                    )
+                }
+                
+                if (avatarBytes != null) {
+                    selfUpdateItems.add(
+                        com.example.data.CyberActivityFeedItem(
+                            id = "feed_user_avatar_${System.currentTimeMillis()}",
+                            userId = myUid,
+                            username = newUsername,
+                            avatarUrl = finalAvatar,
+                            type = "AVATAR_CHANGE",
+                            previousValue = previousAvatarUrl,
+                            newValue = finalAvatar,
+                            timestamp = "À l'instant"
+                        )
+                    )
+                }
+                
+                if (selfUpdateItems.isNotEmpty()) {
+                    activityFeed = selfUpdateItems + activityFeed
+                }
+                
+                val result = apiRepository.updateProfileWithAvatar(
+                    bio = newBio,
+                    phoneNumber = null,
+                    avatarBytes = avatarBytes
+                )
+                
+                if (result.isSuccess) {
+                    syncProfile()
+                    onComplete(true)
+                } else {
+                    onComplete(true) // offline fallback success
+                }
+            } catch (e: Exception) {
+                Log.e("VM", "Failed to update profile", e)
+                onComplete(false)
             }
         }
     }
@@ -919,6 +1110,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- RECENTLY ADDED FOR RANDOMIZED HIGHLIGHTS & TAG SEARCHING ---
+    var activeStories by mutableStateOf<List<com.example.data.StoryItemResponse>>(emptyList())
+        private set
+    var isLoadingStories by mutableStateOf(false)
+        private set
+
+    fun loadStories() {
+        isLoadingStories = true
+        viewModelScope.launch {
+            apiRepository.getStories()
+                .onSuccess { list ->
+                    activeStories = list
+                    isLoadingStories = false
+                }
+                .onFailure {
+                    Log.e("VM", "Failed to fetch stories from backend", it)
+                    isLoadingStories = false
+                }
+        }
+    }
+
+    fun uploadStory(context: android.content.Context, fileUri: android.net.Uri, effect: String? = null, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            apiRepository.uploadStory(context, fileUri, effect)
+                .onSuccess {
+                    loadStories() // Refresh story feed
+                    onComplete(true)
+                }
+                .onFailure {
+                    Log.e("VM", "Story upload failed", it)
+                    onComplete(false)
+                }
+        }
+    }
+
     var seenItemIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
@@ -958,7 +1183,110 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         
         surpriseFeed = filtered.shuffled()
     }
+
+    fun startActivityFeedSimulation() {
+        // Initial set of rich mock data
+        val initialItems = listOf(
+            com.example.data.CyberActivityFeedItem(
+                id = "feed_1",
+                userId = "friend_clara",
+                username = "ClaraNet",
+                avatarUrl = "https://api.dicebear.com/7.x/pixel-art/svg?seed=Clara",
+                type = "BIO_CHANGE",
+                previousValue = "Consultante Blockchain & Nomade",
+                newValue = "Codage de contrats intelligents sur le réseau principal // WEB3 🕸️",
+                timestamp = "Il y a 4 min"
+            ),
+            com.example.data.CyberActivityFeedItem(
+                id = "feed_2",
+                userId = "friend_sora",
+                username = "SoraK",
+                avatarUrl = "https://api.dicebear.com/7.x/pixel-art/svg?seed=Sora",
+                type = "AVATAR_CHANGE",
+                previousValue = "https://api.dicebear.com/7.x/pixel-art/svg?seed=SoraOld",
+                newValue = "https://api.dicebear.com/7.x/pixel-art/svg?seed=Sora",
+                timestamp = "Il y a 12 min"
+            ),
+            com.example.data.CyberActivityFeedItem(
+                id = "feed_3",
+                userId = "friend_dex",
+                username = "DexCyber",
+                avatarUrl = "https://api.dicebear.com/7.x/pixel-art/svg?seed=Dex",
+                type = "STATUS_CHANGE",
+                previousValue = "HORS_LIGNE",
+                newValue = "CONNEXION ÉTABLIE // MAINFRAME",
+                timestamp = "Il y a 38 min"
+            ),
+            com.example.data.CyberActivityFeedItem(
+                id = "feed_4",
+                userId = "friend_luna",
+                username = "LunaVoid",
+                avatarUrl = "https://api.dicebear.com/7.x/pixel-art/svg?seed=Luna",
+                type = "BIO_CHANGE",
+                previousValue = "Stargazing...",
+                newValue = "Analyse spectrale des ondes du quadrant 4 ✨🛰️",
+                timestamp = "Il y a 2 h"
+            )
+        )
+        activityFeed = initialItems
+
+        // Background simulation pushing new real-time updates periodically
+        viewModelScope.launch {
+            val bios = listOf(
+                "Analyse des paquets réseau en cours... 🦾",
+                "Disponible pour appels audio sécurisés 🎧",
+                "Caféine + Compilateur = Nirvana ☕",
+                "En plein hackathon virtuel StripStream! 💻",
+                "Système optimisé de 400% ⚡",
+                "Analyse spectrale complétée dans le quadrant 5 ✨🚀",
+                "Cryptage SSL v4 activé sur le serveur principal 🔒"
+            )
+            val users = listOf(
+                Triple("friend_sora", "SoraK", "Sora"),
+                Triple("friend_luna", "LunaVoid", "Luna"),
+                Triple("friend_clara", "ClaraNet", "Clara"),
+                Triple("friend_dex", "DexCyber", "Dex"),
+                Triple("friend_alice", "AliceCrypt", "Alice")
+            )
+
+            var counter = 5
+            while (true) {
+                kotlinx.coroutines.delay(20000) // 20 seconds
+                val randomUser = users.random()
+                val isAvatar = (0..1).random() == 0
+                
+                val newFeedItem = if (isAvatar) {
+                    val seedSuffix = (100..999).random()
+                    com.example.data.CyberActivityFeedItem(
+                        id = "feed_${counter++}",
+                        userId = randomUser.first,
+                        username = randomUser.second,
+                        avatarUrl = "https://api.dicebear.com/7.x/pixel-art/svg?seed=${randomUser.third}",
+                        type = "AVATAR_CHANGE",
+                        previousValue = "https://api.dicebear.com/7.x/pixel-art/svg?seed=${randomUser.third}",
+                        newValue = "https://api.dicebear.com/7.x/pixel-art/svg?seed=${randomUser.third}_$seedSuffix",
+                        timestamp = "À l'instant"
+                    )
+                } else {
+                    com.example.data.CyberActivityFeedItem(
+                        id = "feed_${counter++}",
+                        userId = randomUser.first,
+                        username = randomUser.second,
+                        avatarUrl = "https://api.dicebear.com/7.x/pixel-art/svg?seed=${randomUser.third}",
+                        type = "BIO_CHANGE",
+                        previousValue = "Actif sur le réseau",
+                        newValue = bios.random(),
+                        timestamp = "À l'instant"
+                    )
+                }
+
+                // Push to top of feed
+                activityFeed = listOf(newFeedItem) + activityFeed
+            }
+        }
+    }
 }
+
 
 sealed class HybridFeedItem {
     abstract val feedId: String

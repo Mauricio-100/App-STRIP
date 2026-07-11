@@ -152,4 +152,14 @@ interface ApiService {
     suspend fun likeTextPost(
         @Path("post_id") postId: String
     ): Response<LikeResponse>
+
+    @GET("api/stories")
+    suspend fun getStories(): Response<List<StoryItemResponse>>
+
+    @POST("api/stories")
+    @Multipart
+    suspend fun uploadStory(
+        @Part file: okhttp3.MultipartBody.Part,
+        @Part("effect") effect: okhttp3.RequestBody?
+    ): Response<Map<String, Any>>
 }

@@ -207,6 +207,186 @@ fun LoginScreen(viewModel: MainViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Expandable Server settings card
+            var showServerSettings by remember { mutableStateOf(false) }
+            var tempServerUrl by remember { mutableStateOf(viewModel.preferencesManager.serverUrl) }
+            val context = androidx.compose.ui.platform.LocalContext.current
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showServerSettings = !showServerSettings },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Dns,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "PARAMÈTRES DU SERVEUR DEV/PROD",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        Icon(
+                            imageVector = if (showServerSettings) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
+                    }
+
+                    if (showServerSettings) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Modifiez l'URL de connexion du serveur pour basculer sur l'environnement de votre choix.",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        OutlinedTextField(
+                            value = tempServerUrl,
+                            onValueChange = { 
+                                tempServerUrl = it
+                                viewModel.resetServerTestState()
+                            },
+                            label = { Text("URL du Serveur API") },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = NeonCyan,
+                                unfocusedBorderColor = Color.Gray,
+                                focusedLabelColor = NeonCyan,
+                                unfocusedLabelColor = Color.Gray,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            ),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    viewModel.preferencesManager.serverUrl = tempServerUrl
+                                    android.widget.Toast.makeText(context, "URL du serveur mise à jour !", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Enregistrer", fontSize = 11.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    viewModel.testServerConnection(tempServerUrl)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Tester", fontSize = 11.sp, color = TextPrimary)
+                            }
+                        }
+
+                        // Status alert indicator
+                        if (viewModel.serverTestState.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            when (viewModel.serverTestState) {
+                                "TESTING" -> {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(color = NeonCyan, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Vérification en cours...", color = NeonCyan, fontSize = 11.sp)
+                                    }
+                                }
+                                "SUCCESS" -> {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.Green, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Serveur en ligne & fonctionnel !", color = Color.Green, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                "FAILED" -> {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Error, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Impossible de joindre le serveur.", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Raccourcis Connexion :",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Production Render
+                            Button(
+                                onClick = {
+                                    tempServerUrl = "https://hoosthubs-g.onrender.com/"
+                                    viewModel.preferencesManager.serverUrl = tempServerUrl
+                                    viewModel.resetServerTestState()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                border = BorderStroke(1.dp, NeonPink),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(2.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Production", fontSize = 10.sp, color = NeonPink)
+                            }
+
+                            // Dynamic local AI Studio applet dev url
+                            Button(
+                                onClick = {
+                                    tempServerUrl = "https://ais-dev-ghaqsv6bw6udmdrn3u3y3h-912356869734.europe-west2.run.app/"
+                                    viewModel.preferencesManager.serverUrl = tempServerUrl
+                                    viewModel.resetServerTestState()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                                border = BorderStroke(1.dp, NeonCyan),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(2.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Serveur CMO Local", fontSize = 10.sp, color = NeonCyan)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             when (val state = viewModel.authUiState) {
                 is AuthUiState.Loading -> CircularProgressIndicator(color = NeonCyan, modifier = Modifier.size(30.dp))
                 is AuthUiState.Error -> Text(
@@ -594,100 +774,6 @@ fun MainContainer(viewModel: MainViewModel) {
     }
 }
 
-// ──── UPLOAD TAB SCREEN ───────────────────────────────────────────────────────
-@Composable
-fun UploadTabScreen(viewModel: MainViewModel) {
-    var description by remember { mutableStateOf("") }
-    var isPublic by remember { mutableStateOf(true) }
-    var hasOriginalSound by remember { mutableStateOf(true) }
-    
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp)
-            .statusBarsPadding(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Publier", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        // Video Preview Placeholder
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(200.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(DarkSurface)
-                .clickable { /* Simulate picking video */ },
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.CloudUpload, contentDescription = "Upload", tint = NeonPink, modifier = Modifier.size(48.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Sélectionner une vidéo...", color = TextSecondary)
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        OutlinedTextField(
-            value = description,
-            onValueChange = { description = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Description", color = TextSecondary) },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = NeonCyan,
-                unfocusedBorderColor = Color.DarkGray,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary
-            ),
-            maxLines = 4
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Vidéo publique", color = TextPrimary)
-            Switch(
-                checked = isPublic,
-                onCheckedChange = { isPublic = it },
-                colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan, checkedTrackColor = NeonCyan.copy(alpha = 0.5f))
-            )
-        }
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Son original", color = TextPrimary)
-            Switch(
-                checked = hasOriginalSound,
-                onCheckedChange = { hasOriginalSound = it },
-                colors = SwitchDefaults.colors(checkedThumbColor = NeonCyan, checkedTrackColor = NeonCyan.copy(alpha = 0.5f))
-            )
-        }
-        
-        Spacer(modifier = Modifier.weight(1f))
-        
-        Button(
-            onClick = {
-                viewModel.uploadVideo(description)
-                viewModel.setHomeTab("feed")
-            },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = NeonPink),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("Publier maintenant", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        }
-        Spacer(modifier = Modifier.height(32.dp))
-    }
-}
 
 // ──── INSTAGRAM STORIES & SHORTS REELS ──────────────────────────────────────────
 
@@ -3037,6 +3123,26 @@ fun ConversationItemView(conv: ChatConversation, onClick: () -> Unit) {
 fun ChatDetailScreen(viewModel: MainViewModel) {
     val user = viewModel.activeChatUser ?: return
     var textMsg by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearching by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val chatImageLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            viewModel.sendMediaMessage(uri.toString(), "image")
+        }
+    }
+
+    // Filter messages locally inside the screen for instant, robust matching
+    val filteredMessages = remember(viewModel.chatMessages, searchQuery) {
+        if (searchQuery.isBlank()) {
+            viewModel.chatMessages
+        } else {
+            viewModel.chatMessages.filter { it.content.contains(searchQuery, ignoreCase = true) }
+        }
+    }
 
     // Implement real-time typing state updates based on user inputs
     LaunchedEffect(textMsg) {
@@ -3079,7 +3185,7 @@ fun ChatDetailScreen(viewModel: MainViewModel) {
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "@${user.username}",
                     color = TextPrimary,
@@ -3095,6 +3201,34 @@ fun ChatDetailScreen(viewModel: MainViewModel) {
                     Text("Hors ligne", color = TextSecondary, fontSize = 11.sp)
                 }
             }
+
+            // Real-time local message keyword filter input trigger
+            if (isSearching) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Rechercher...", color = TextSecondary, fontSize = 11.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NeonCyan,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    ),
+                    modifier = Modifier.width(135.dp),
+                    trailingIcon = {
+                        IconButton(onClick = { 
+                            searchQuery = ""
+                            isSearching = false
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                )
+            } else {
+                IconButton(onClick = { isSearching = true }) {
+                    Icon(Icons.Default.Search, contentDescription = "Search Messages", tint = TextPrimary)
+                }
+            }
         }
 
         // Messages output scroll container
@@ -3105,7 +3239,7 @@ fun ChatDetailScreen(viewModel: MainViewModel) {
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(viewModel.chatMessages) { message ->
+            items(filteredMessages) { message ->
                 val isMe = message.senderId == viewModel.preferencesManager.userId
                 Box(
                     modifier = Modifier.fillMaxWidth(),
@@ -3113,10 +3247,7 @@ fun ChatDetailScreen(viewModel: MainViewModel) {
                 ) {
                     Card(
                         shape = RoundedCornerShape(
-                            topStart = 12.dp,
-                            topEnd = 12.dp,
-                            bottomStart = if (isMe) 12.dp else 0.dp,
-                            bottomEnd = if (isMe) 0.dp else 12.dp
+12.dp
                         ),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isMe) NeonPink else DarkSurface
@@ -3124,12 +3255,27 @@ fun ChatDetailScreen(viewModel: MainViewModel) {
                         modifier = Modifier.widthIn(max = 280.dp)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = message.content,
-                                color = Color.White,
-                                fontSize = 14.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
+                            if (message.type == "image" || message.content.startsWith("content://") || message.content.startsWith("file://")) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(message.content)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = "Image message",
+                                    modifier = Modifier
+                                        .width(200.dp)
+                                        .height(150.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Text(
+                                    text = message.content,
+                                    color = Color.White,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = message.createdAt,
                                 color = Color.White.copy(alpha = 0.6f),
@@ -3151,6 +3297,19 @@ fun ChatDetailScreen(viewModel: MainViewModel) {
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(
+                onClick = { chatImageLauncher.launch("image/*") }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Image,
+                    contentDescription = "Send Photo",
+                    tint = NeonCyan,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
             OutlinedTextField(
                 value = textMsg,
                 onValueChange = { textMsg = it },

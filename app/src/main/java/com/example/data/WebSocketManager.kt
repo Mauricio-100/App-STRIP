@@ -38,7 +38,14 @@ class WebSocketManager(private val preferencesManager: PreferencesManager) {
         isConnecting = true
         isClosedIntentionally = false
 
-        val url = "wss://hoosthubs-g.onrender.com/ws/$userId"
+        val baseUrl = preferencesManager.serverUrl.trim()
+        val wsBase = when {
+            baseUrl.startsWith("https://") -> baseUrl.replace("https://", "wss://")
+            baseUrl.startsWith("http://") -> baseUrl.replace("http://", "ws://")
+            else -> "wss://$baseUrl"
+        }
+        val cleanWsBase = if (wsBase.endsWith("/")) wsBase else "$wsBase/"
+        val url = "${cleanWsBase}ws/$userId"
         Log.d("WS", "Connecting to WebSocket: $url")
         val request = Request.Builder().url(url).build()
 

@@ -37,7 +37,8 @@ data class UserProfile(
     @Json(name = "following_count") val followingCount: Int = 0,
     @Json(name = "likes_received") val likesReceived: Int = 0,
     @Json(name = "videos_count") val videosCount: Int = 0,
-    @Json(name = "is_online") val isOnline: Boolean = false
+    @Json(name = "is_online") val isOnline: Boolean = false,
+    @Json(name = "is_following") val isFollowing: Boolean? = false
 )
 
 @JsonClass(generateAdapter = true)
@@ -246,7 +247,8 @@ data class TextPost(
     @Json(name = "user_id") val userId: String,
     @Json(name = "username") val username: String,
     @Json(name = "avatar_url") val avatarUrl: String?,
-    @Json(name = "likes") val likes: Int = 0,
+    @Json(name = "likes_count") val likes: Int = 0,
+    @Json(name = "views_count") val viewsCount: Int = 0,
     @Json(name = "liked") val liked: Boolean = false,
     @Json(name = "is_verified") val isVerified: Boolean = false
 )
@@ -255,3 +257,32 @@ data class TextPost(
 data class CreatePostRequest(
     @Json(name = "content") val content: String
 )
+
+@JsonClass(generateAdapter = true)
+data class StoryItemUser(
+    @Json(name = "id") val id: String,
+    @Json(name = "username") val username: String,
+    @Json(name = "avatar_url") val avatarUrl: String?
+)
+
+@JsonClass(generateAdapter = true)
+data class StoryItemResponse(
+    @Json(name = "id") val id: String,
+    @Json(name = "media_url") val mediaUrl: String,
+    @Json(name = "media_type") val mediaType: String,
+    @Json(name = "created_at") val createdAt: String,
+    @Json(name = "user") val user: StoryItemUser
+)
+
+data class CyberActivityFeedItem(
+    val id: String,
+    val userId: String,
+    val username: String,
+    val avatarUrl: String?,
+    val type: String, // "AVATAR_CHANGE", "BIO_CHANGE", "STATUS_CHANGE"
+    val previousValue: String? = null,
+    val newValue: String? = null,
+    val timestamp: String
+)
+
+

@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodels.MainViewModel
@@ -44,15 +46,20 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigationRouter(viewModel: MainViewModel) {
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(viewModel.currentScreen) {
+        focusManager.clearFocus()
+    }
+
     when (viewModel.currentScreen) {
         "login" -> LoginScreen(viewModel)
         "register" -> RegisterScreen(viewModel)
-        "home_container" -> MainContainer(viewModel)
+        "home_container" -> StripMainLayout(viewModel)
         "chat_detail" -> ChatDetailScreen(viewModel)
         "live_watch" -> LiveStreamWatchScreen(viewModel)
         "verify_screen" -> VerificationDialogScreen(viewModel)
-        "other_profile" -> OtherProfileScreen(viewModel)
-        "search_screen" -> SearchScreen(viewModel)
+        "other_profile" -> com.example.ui.screens.CyberOtherProfileScreen(viewModel)
+        "search_screen" -> com.example.ui.screens.SearchScreen(viewModel)
         "notifications_screen" -> NotificationsScreen(viewModel)
         else -> LoginScreen(viewModel)
     }
